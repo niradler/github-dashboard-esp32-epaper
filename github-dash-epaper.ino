@@ -388,6 +388,26 @@ String getTimeAgo(time_t timestamp) {
   return String(diff / 86400) + "d ago";
 }
 
+void drawWiFiBars(int x, int y, int rssi) {
+  int bars = 0;
+  if (rssi >= -60) bars = 4;
+  else if (rssi >= -70) bars = 3;
+  else if (rssi >= -80) bars = 2;
+  else if (rssi >= -90) bars = 1;
+  
+  for (int i = 0; i < 4; i++) {
+    int barHeight = 2 + (i * 2);
+    int barX = x + (i * 3);
+    int barY = y - barHeight;
+    
+    if (i < bars) {
+      display.fillRect(barX, barY, 2, barHeight, GxEPD_BLACK);
+    } else {
+      display.drawRect(barX, barY, 2, barHeight, GxEPD_BLACK);
+    }
+  }
+}
+
 void drawFooter(DisplayPrinter& printer) {
   display.drawLine(0, SCREEN_HEIGHT - 20, SCREEN_WIDTH, SCREEN_HEIGHT - 20, GxEPD_BLACK);
   
@@ -395,17 +415,23 @@ void drawFooter(DisplayPrinter& printer) {
   printer.setCursorX(3);
   printer.setFont(u8g2_font_6x10_tf);
   
-  int rssi = WiFi.RSSI();
-  printer.print(String(rssi) + "dBm");
+  String ssid = WiFi.SSID();
+  if (ssid.length() > 10) {
+    ssid = ssid.substring(0, 10);
+  }
+  printer.print(ssid);
   
-  printer.setCursorX(70);
+  int rssi = WiFi.RSSI();
+  drawWiFiBars(printer.getCursorX() + 4, SCREEN_HEIGHT - 4, rssi);
+  
+  printer.setCursorX(100);
   if (lastUpdateTimestamp > 0) {
-    printer.print(getFormattedTime(lastUpdateTimestamp));
+    printer.print(getFormattedDate(lastUpdateTimestamp));
   } else {
-    printer.print("--:--");
+    printer.print("--/-- --:--");
   }
   
-  printer.setCursorX(145);
+  printer.setCursorX(195);
   printer.print(getFormattedTime());
 }
 

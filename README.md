@@ -2,6 +2,8 @@
 
 A smart notification dashboard for GitHub notifications running on ESP32 with an e-paper display. This device fetches your GitHub notifications and displays them in a clean, categorized format on a 2.13" e-paper display.
 
+![GitHub E-Paper Display](github-epaper.jpg)
+
 ## Features
 
 - **Real-time GitHub Notifications**: Fetches and displays unread GitHub notifications
@@ -42,12 +44,14 @@ A smart notification dashboard for GitHub notifications running on ESP32 with an
 ### Configuration
 
 #### WiFi Setup
+
 1. Go to the **WiFi** tab in the web interface
 2. Enter your WiFi SSID and password
 3. Set an admin password for security
 4. Click **Save WiFi** (device will reboot)
 
 #### GitHub Integration
+
 1. Generate a GitHub Personal Access Token:
    - Go to GitHub Settings → Developer settings → Personal access tokens
    - Create a **Classic token** with `notifications` scope
@@ -57,6 +61,7 @@ A smart notification dashboard for GitHub notifications running on ESP32 with an
 5. Enter admin password and click **Save Providers**
 
 #### Settings
+
 - **Update Interval**: How often to check for notifications (default: 10 minutes)
 - Adjust in the **Settings** tab
 
@@ -65,6 +70,7 @@ A smart notification dashboard for GitHub notifications running on ESP32 with an
 ### Display Information
 
 The e-paper screen shows:
+
 - GitHub logo
 - Total notification count
 - Category breakdown with icons:
@@ -98,6 +104,7 @@ The e-paper screen shows:
 ### Deep Sleep Mode
 
 When enabled (default), the device:
+
 1. Wakes up every N minutes (configurable)
 2. Connects to WiFi
 3. Fetches notifications
@@ -105,12 +112,14 @@ When enabled (default), the device:
 5. Enters deep sleep
 
 **Wake Sources**:
+
 - Timer (based on update interval)
 - Button press on GPIO 39
 
 **Web Server Timeout**: Device stays awake for 30 seconds after boot to allow web access, then sleeps
 
 ### Disabling Sleep
+
 Set `SLEEP_ENABLED false` in the code to disable deep sleep (useful for debugging)
 
 ## Configuration Constants
@@ -127,11 +136,13 @@ WEB_SERVER_TIMEOUT      = 30000           // Stay awake time (ms)
 ## Default Credentials
 
 **Initial Config** (stored in Preferences):
+
 - WiFi SSID: _(empty - configure in setup mode)_
 - WiFi Password: _(empty - configure in setup mode)_
 - Admin Password: `admin`
 
 **AP Mode** (when not configured):
+
 - SSID: `NotificationHub`
 - Password: `configure`
 
@@ -140,6 +151,7 @@ WEB_SERVER_TIMEOUT      = 30000           // Stay awake time (ms)
 ## Serial Monitor Output
 
 Connect at **115200 baud** to see detailed logs:
+
 - System initialization
 - WiFi connection status
 - API requests and responses
@@ -150,26 +162,31 @@ Connect at **115200 baud** to see detailed logs:
 ## Troubleshooting
 
 ### WiFi Connection Issues
+
 - Verify SSID and password in web interface
 - Check signal strength (device may be too far from router)
 - Monitor Serial output for connection errors
 
 ### GitHub API Issues
+
 - **401 Error**: Invalid token - regenerate GitHub token
 - **403 Error**: Rate limited - wait or check token permissions
 - **Empty Response**: Network issue or API down
 
 ### Display Not Updating
+
 - Check wiring connections (CS, DC, RST, BUSY)
 - Verify `ENABLE_DISPLAY` is defined
 - Look for display errors in Serial monitor
 
 ### Memory Issues
+
 - Reduce `GITHUB_MAX_PAGES` if running out of heap
 - Monitor "Free Heap" in Serial output
 - Consider reducing `JSON_BUFFER_SIZE`
 
 ### Factory Reset
+
 1. Go to web interface
 2. Use `/api/reset` endpoint
 3. Provide admin password
@@ -194,6 +211,7 @@ U8g2_for_Adafruit_GFX.h    // Font rendering
 ### Display Architecture
 
 **DisplayPrinter Class**: A text layout manager that handles:
+
 - Automatic line wrapping
 - Margin management
 - Font switching
@@ -203,6 +221,7 @@ U8g2_for_Adafruit_GFX.h    // Font rendering
 ### Memory Optimization
 
 The code uses several techniques to manage ESP32's limited memory:
+
 - Dynamic JSON documents with size limits
 - Paged API requests to avoid large payloads
 - String reuse and careful buffer management
@@ -211,6 +230,7 @@ The code uses several techniques to manage ESP32's limited memory:
 ## API Rate Limits
 
 GitHub API rate limits:
+
 - **5,000 requests/hour** for authenticated requests
 - This device makes 1 request per page per update cycle
 - With default settings (10-minute intervals, 25 max pages):
@@ -228,6 +248,7 @@ GitHub API rate limits:
 ## Contributing
 
 This is an embedded device project. When modifying:
+
 - Test memory usage thoroughly
 - Verify deep sleep functionality
 - Check display refresh behavior
@@ -248,4 +269,3 @@ MIT License - Feel free to modify and distribute
 
 **Version**: 1.0  
 **Last Updated**: November 2025
-
