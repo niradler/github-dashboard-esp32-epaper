@@ -1,0 +1,12 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Arduino: Upload & Monitor",
+            "type": "arduino",
+            "request": "launch",
+            "preLaunchTask": "Arduino: Compile & Upload",
+            "postDebugTask": "Arduino: Monitor Serial"
+        }
+    ]
+}

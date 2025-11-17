@@ -1,0 +1,95 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Arduino: Compile",
+            "type": "shell",
+            "command": "arduino-cli",
+            "args": [
+                "compile",
+                "--fqbn",
+                "esp32:esp32:esp32",
+                "."
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Arduino: Upload",
+            "type": "shell",
+            "command": "arduino-cli",
+            "args": [
+                "upload",
+                "--fqbn",
+                "esp32:esp32:esp32",
+                "--port",
+                "${input:port}",
+                "."
+            ],
+            "dependsOn": "Arduino: Compile",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Arduino: Compile & Upload",
+            "type": "shell",
+            "command": "arduino-cli",
+            "args": [
+                "compile",
+                "--upload",
+                "--fqbn",
+                "esp32:esp32:esp32",
+                "--port",
+                "${input:port}",
+                "."
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Arduino: Monitor Serial",
+            "type": "shell",
+            "command": "arduino-cli",
+            "args": [
+                "monitor",
+                "--port",
+                "${input:port}",
+                "--config",
+                "baudrate=115200"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "port",
+            "type": "pickString",
+            "description": "Select COM port",
+            "options": [
+                "COM4",
+                "COM5",
+                "COM6",
+                "COM7"
+            ],
+            "default": "COM6"
+        }
+    ]
+}

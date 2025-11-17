@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+        "arduino-cli-mcp": {
+            "command": "uvx",
+            "args": [
+                "arduino-mcp"
+            ],
+            "env": {}
+        }
+    }
+}
