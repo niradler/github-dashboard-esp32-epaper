@@ -53,6 +53,7 @@ struct NotificationProvider {
   int mentions;
   int assignments;
   int otherReasons;
+  String username;
 };
 
 // Supported providers
@@ -424,11 +425,13 @@ void drawFooter(DisplayPrinter& printer) {
   int rssi = WiFi.RSSI();
   drawWiFiBars(printer.getCursorX() + 4, SCREEN_HEIGHT - 4, rssi);
   
-  printer.setCursorX(100);
-  if (lastUpdateTimestamp > 0) {
-    printer.print(getFormattedDate(lastUpdateTimestamp));
-  } else {
-    printer.print("--/-- --:--");
+  printer.setCursorX(90);
+  if (providers[GITHUB].username.length() > 0) {
+    String username = providers[GITHUB].username;
+    if (username.length() > 12) {
+      username = username.substring(0, 12);
+    }
+    printer.print("@" + username);
   }
   
   printer.setCursorX(195);
@@ -986,6 +989,28 @@ void updateGitHub(int idx) {
     return;
   }
   client->setInsecure();
+  
+  if (providers[idx].username.length() == 0) {
+    HTTPClient https;
+    if (https.begin(*client, "https://api.github.com/user")) {
+      https.addHeader("Authorization", "Bearer " + providers[idx].apiToken);
+      https.addHeader("User-Agent", "ESP32-NotificationHub");
+      https.setTimeout(HTTP_TIMEOUT_MS);
+      
+      int httpCode = https.GET();
+      if (httpCode == 200) {
+        String payload = https.getString();
+        DynamicJsonDocument doc(1024);
+        DeserializationError error = deserializeJson(doc, payload);
+        if (!error && doc.containsKey("login")) {
+          providers[idx].username = doc["login"].as<String>();
+          Serial.print("[GITHUB] Username: ");
+          Serial.println(providers[idx].username);
+        }
+      }
+      https.end();
+    }
+  }
   
   int totalUnread = 0;
   int totalChecked = 0;
