@@ -2,8 +2,6 @@
 
 A smart notification dashboard for GitHub notifications running on ESP32 with an e-paper display. This device fetches your GitHub notifications and displays them in a clean, categorized format on a 2.13" e-paper display.
 
-![GitHub E-Paper Display](github-epaper.jpg)
-
 ## Features
 
 - **Multi-Screen Dashboard**: Three screens accessible via button press:
@@ -11,7 +9,7 @@ A smart notification dashboard for GitHub notifications running on ESP32 with an
   - **Profile**: GitHub profile statistics (repos, stars, open PRs, followers)
   - **Activity**: Contribution metrics (today's commits, weekly total, streak, 30-day total)
 - **Smart Screen Cycling**: Button on GPIO 39 cycles through screens with 4-second debounce
-- **Efficient API Usage**: 
+- **Efficient API Usage**:
   - REST API for notifications
   - GraphQL API for profile and activity data (minimized payload size)
 - **Category Breakdown**: Organizes notifications by type:
@@ -140,25 +138,33 @@ The device has three screens that you can cycle through by pressing the button o
 The device provides a full-featured web interface for configuration and monitoring:
 
 #### Dashboard Tab
+
 ![Dashboard](screenshots/admin-dashboard.png)
+
 - Real-time connection status
 - Current notification count
 - Manual refresh button
 
 #### WiFi Tab
+
 ![WiFi Configuration](screenshots/admin-wifi.png)
+
 - WiFi SSID and password configuration
 - Admin password setup
 - Network settings
 
 #### Providers Tab
+
 ![Providers Configuration](screenshots/admin-providers.png)
+
 - Enable/disable GitHub provider
 - GitHub API token configuration
 - Provider management
 
 #### Settings Tab
+
 ![Settings](screenshots/admin-settings.png)
+
 - Update interval configuration
 - Admin password management
 - System settings
@@ -296,7 +302,7 @@ U8g2_for_Adafruit_GFX.h    // Font rendering
 **Multi-Screen System**: The code is organized into modular screen drawing functions:
 
 - `drawNotificationScreen()` - Notifications with category breakdown
-- `drawProfileScreen()` - GitHub profile statistics  
+- `drawProfileScreen()` - GitHub profile statistics
 - `drawActivityScreen()` - Contribution metrics
 - `updateDisplay(bool forceUpdate)` - Smart update router
 - `shouldUpdateDisplay()` - Change detection for each screen
@@ -336,11 +342,13 @@ GitHub API rate limits:
 - **5,000 points/hour** for GraphQL API (queries cost 1-50 points typically)
 
 This device makes:
+
 - **Notifications Screen**: 1 request per page per update (REST API)
 - **Profile Screen**: 1 GraphQL query per update (~5-10 points)
 - **Activity Screen**: 1 GraphQL query per update (~5-10 points)
 
 With default settings (10-minute intervals, 25 max pages):
+
 - Worst case: 25 REST + 2 GraphQL requests every 10 minutes = ~170 requests/hour
 - Well under the limit for typical usage
 
@@ -381,6 +389,7 @@ MIT License - Feel free to modify and distribute
 ## Changelog
 
 ### Version 2.0 (November 2025)
+
 - ✨ Added Profile screen with GitHub statistics
 - ✨ Added Activity screen with contribution metrics
 - ✨ Implemented screen cycling via button (GPIO 39)
@@ -392,4 +401,5 @@ MIT License - Feel free to modify and distribute
 - 📝 Split code into multiple files for better maintainability
 
 ### Version 1.0
+
 - Initial release with notification display
