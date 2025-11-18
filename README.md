@@ -129,6 +129,34 @@ The device has three screens that you can cycle through by pressing the button o
 - Press the **Screen Cycle button** (GPIO 39) to switch screens (also refreshes data)
 - Use the **Refresh Now** button in the web interface
 
+### Web Interface
+
+The device provides a full-featured web interface for configuration and monitoring:
+
+#### Dashboard Tab
+![Dashboard](screenshots/admin-dashboard.png)
+- Real-time connection status
+- Current notification count
+- Manual refresh button
+
+#### WiFi Tab
+![WiFi Configuration](screenshots/admin-wifi.png)
+- WiFi SSID and password configuration
+- Admin password setup
+- Network settings
+
+#### Providers Tab
+![Providers Configuration](screenshots/admin-providers.png)
+- Enable/disable GitHub provider
+- GitHub API token configuration
+- Provider management
+
+#### Settings Tab
+![Settings](screenshots/admin-settings.png)
+- Update interval configuration
+- Admin password management
+- System settings
+
 ### Web Interface Endpoints
 
 - `GET /` - Main configuration page
