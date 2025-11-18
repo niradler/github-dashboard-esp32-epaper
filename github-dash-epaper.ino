@@ -8,7 +8,6 @@
 
 #define ENABLE_DISPLAY
 
-// Configuration Constants
 const int UPDATE_INTERVAL_MS = 1 * 60 * 1000;
 const int GITHUB_MAX_PAGES = 25;
 const int GITHUB_PER_PAGE = 13;
@@ -26,11 +25,8 @@ U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
 #endif
 
 WebServer server(80);
-
-// Preferences (persistent storage)
 Preferences preferences;
 
-// Configuration
 struct Config {
   String wifi_ssid;
   String wifi_password;
@@ -39,7 +35,6 @@ struct Config {
   bool configured;
 } config;
 
-// Provider structure
 struct NotificationProvider {
   String name;
   String displayName;
@@ -56,24 +51,30 @@ struct NotificationProvider {
   String username;
 };
 
-// Supported providers
+struct ActivityData {
+  int todayCommits;
+  int weekContributions;
+  int currentStreak;
+  int totalContributions;
+  String lastError;
+  unsigned long lastUpdate;
+};
+
 enum ProviderType {
   GITHUB,
   MAX_PROVIDERS
 };
 
 NotificationProvider providers[MAX_PROVIDERS];
+ActivityData githubActivity;
 
-// Button pins
 #define BUTTON_REFRESH 0
 #define BUTTON_WAKEUP 39
 #define LED_STATUS 2
 
-// Deep sleep settings
 #define SLEEP_ENABLED false
 #define WEB_SERVER_TIMEOUT 30000
 
-// Display constants
 #ifdef ENABLE_DISPLAY
 const int SCREEN_WIDTH = 250;
 const int SCREEN_HEIGHT = 122;
@@ -88,7 +89,14 @@ const int LABEL_X = 32;
 const int COUNT_X = SCREEN_WIDTH - 25;
 #endif
 
-// Global state
+enum ScreenType {
+  SCREEN_NOTIFICATIONS,
+  SCREEN_PROFILE,
+  SCREEN_ACTIVITY,
+  MAX_SCREENS
+};
+
+int currentScreen = SCREEN_NOTIFICATIONS;
 bool isConfigMode = false;
 unsigned long lastUpdateTime = 0;
 time_t lastUpdateTimestamp = 0;
@@ -97,6 +105,12 @@ unsigned long wakeupTime = 0;
 bool allowDeepSleep = false;
 int totalNotifications = 0;
 int activeProviders = 0;
+unsigned long lastScreenSwitchTime = 0;
+const unsigned long SCREEN_SWITCH_DEBOUNCE = 4000;
+
+#ifdef ENABLE_DISPLAY
+void updateDisplay(bool forceUpdate = false);
+#endif
 
 #ifdef ENABLE_DISPLAY
 int lastDisplayedTotal = -1;
@@ -104,49 +118,15 @@ int lastDisplayedReviews = -1;
 int lastDisplayedMentions = -1;
 int lastDisplayedAssignments = -1;
 int lastDisplayedOther = -1;
-#endif
+int lastDisplayedTodayCommits = -1;
+int lastDisplayedWeekContributions = -1;
+int lastDisplayedStreak = -1;
+int lastDisplayedTotalContributions = -1;
+int lastDisplayedPublicRepos = -1;
+int lastDisplayedTotalStars = -1;
+int lastDisplayedOpenPRs = -1;
+int lastDisplayedFollowers = -1;
 
-#ifdef ENABLE_DISPLAY
-const unsigned char github_logo_32x32[] PROGMEM = {
-	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0, 0x0f, 0xff, 
-	0xff, 0xc0, 0x03, 0xff, 0xff, 0x00, 0x00, 0xff, 0xfe, 0x00, 0x00, 0x7f, 
-	0xfc, 0xc0, 0x03, 0x3f, 0xf8, 0xf7, 0xef, 0x9f, 0xf0, 0xff, 0xff, 0x8f, 
-	0xe0, 0xff, 0xff, 0x87, 0xe0, 0xff, 0xff, 0x87, 0xc1, 0xff, 0xff, 0x83, 
-	0xc1, 0xff, 0xff, 0xc3, 0xc3, 0xff, 0xff, 0xc3, 0xc3, 0xff, 0xff, 0xc3, 
-	0xc3, 0xff, 0xff, 0xc3, 0xc3, 0xff, 0xff, 0xc3, 0xc1, 0xff, 0xff, 0xc3, 
-	0xc1, 0xff, 0xff, 0x83, 0xc0, 0xff, 0xff, 0x83, 0xc0, 0x7f, 0xfe, 0x03, 
-	0xe0, 0x1f, 0xf8, 0x47, 0xe0, 0x07, 0xe0, 0xc7, 0xe0, 0x0f, 0xf1, 0x87, 
-	0xf0, 0x0f, 0xff, 0x0f, 0xf8, 0x0f, 0xff, 0x1f, 0xfc, 0x0f, 0xf0, 0x3f, 
-	0xfe, 0x0f, 0xf0, 0x7f, 0xff, 0x0f, 0xf0, 0xff, 0xff, 0xcf, 0xf3, 0xff, 
-	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
-};
-
-const unsigned char icon_review_16x16[] PROGMEM = {
-  0x03, 0xc0, 0x0f, 0xf0, 0x1f, 0xf8, 0x3e, 0x7c, 0x7c, 0x3e, 0x78, 0x1e, 
-  0xf0, 0x0f, 0xf0, 0x0f, 0xf0, 0x0f, 0xf0, 0x0f, 0x78, 0x1e, 0x7c, 0x3e, 
-  0x3e, 0x7c, 0x1f, 0xf8, 0x0f, 0xf0, 0x03, 0xc0
-};
-
-const unsigned char icon_mention_16x16[] PROGMEM = {
-  0x03, 0xc0, 0x0c, 0x30, 0x10, 0x08, 0x20, 0x04, 0x40, 0x02, 0x47, 0xe2, 
-  0x8c, 0x31, 0x88, 0x11, 0x88, 0x11, 0x8c, 0x31, 0x47, 0xe2, 0x40, 0x02, 
-  0x20, 0x04, 0x10, 0x08, 0x0c, 0x30, 0x03, 0xc0
-};
-
-const unsigned char icon_assign_16x16[] PROGMEM = {
-  0x01, 0x80, 0x03, 0xc0, 0x07, 0xe0, 0x0f, 0xf0, 0x0f, 0xf0, 0x0f, 0xf0, 
-  0x07, 0xe0, 0x03, 0xc0, 0x1f, 0xf8, 0x3f, 0xfc, 0x7f, 0xfe, 0x7f, 0xfe, 
-  0x3f, 0xfc, 0x1f, 0xf8, 0x0f, 0xf0, 0x07, 0xe0
-};
-
-const unsigned char icon_other_16x16[] PROGMEM = {
-  0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80,
-  0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80,
-  0x00, 0x00, 0x00, 0x00, 0x01, 0x80, 0x01, 0x80
-};
-#endif
-
-#ifdef ENABLE_DISPLAY
 class DisplayPrinter {
 private:
   GxEPD2_BW<GxEPD2_213_BN, GxEPD2_213_BN::HEIGHT>* display;
@@ -305,317 +285,6 @@ public:
 };
 #endif
 
-#ifdef ENABLE_DISPLAY
-void initDisplay() {
-  Serial.println("[DISPLAY] Init e-paper...");
-  display.init(115200);
-  display.setRotation(1);
-  display.setFullWindow();
-  
-  u8g2Fonts.begin(display);
-  u8g2Fonts.setFontMode(1);
-  u8g2Fonts.setFontDirection(0);
-  u8g2Fonts.setForegroundColor(GxEPD_BLACK);
-  u8g2Fonts.setBackgroundColor(GxEPD_WHITE);
-  
-  display.firstPage();
-  
-  do {
-    display.fillScreen(GxEPD_WHITE);
-    display.setTextColor(GxEPD_BLACK);
-    
-    display.setFont(&FreeMonoBold12pt7b);
-    display.setCursor(10, 30);
-    display.print("GitHub");
-    
-    display.setFont(&FreeMonoBold9pt7b);
-    display.setCursor(10, 60);
-    display.print("Notification");
-    display.setCursor(10, 85);
-    display.print("Dashboard");
-  } while (display.nextPage());
-  
-  Serial.println("[DISPLAY] Ready");
-}
-
-void drawGitHubLogo(int x, int y, int size) {
-  display.fillCircle(x + size/2, y + size/2, size/2, GxEPD_BLACK);
-  int innerSize = size * 0.7;
-  display.fillCircle(x + size/2, y + size/2, innerSize/2, GxEPD_WHITE);
-  int dotSize = size * 0.15;
-  display.fillCircle(x + size/2, y + size/2, dotSize, GxEPD_BLACK);
-}
-
-String getFormattedTime(time_t timestamp = 0) {
-  struct tm timeinfo;
-  if (timestamp == 0) {
-    if (!getLocalTime(&timeinfo)) {
-      return "No time";
-    }
-  } else {
-    localtime_r(&timestamp, &timeinfo);
-  }
-  
-  char buffer[20];
-  strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
-  return String(buffer);
-}
-
-String getFormattedDate(time_t timestamp = 0) {
-  struct tm timeinfo;
-  if (timestamp == 0) {
-    if (!getLocalTime(&timeinfo)) {
-      return "No date";
-    }
-  } else {
-    localtime_r(&timestamp, &timeinfo);
-  }
-  
-  char buffer[20];
-  strftime(buffer, sizeof(buffer), "%d/%m %H:%M", &timeinfo);
-  return String(buffer);
-}
-
-String getTimeAgo(time_t timestamp) {
-  if (timestamp == 0) return "Never";
-  
-  time_t now;
-  time(&now);
-  int diff = (int)difftime(now, timestamp);
-  
-  if (diff < 60) return String(diff) + "s ago";
-  if (diff < 3600) return String(diff / 60) + "m ago";
-  if (diff < 86400) return String(diff / 3600) + "h ago";
-  return String(diff / 86400) + "d ago";
-}
-
-void drawWiFiBars(int x, int y, int rssi) {
-  int bars = 0;
-  if (rssi >= -60) bars = 4;
-  else if (rssi >= -70) bars = 3;
-  else if (rssi >= -80) bars = 2;
-  else if (rssi >= -90) bars = 1;
-  
-  for (int i = 0; i < 4; i++) {
-    int barHeight = 2 + (i * 2);
-    int barX = x + (i * 3);
-    int barY = y - barHeight;
-    
-    if (i < bars) {
-      display.fillRect(barX, barY, 2, barHeight, GxEPD_BLACK);
-    } else {
-      display.drawRect(barX, barY, 2, barHeight, GxEPD_BLACK);
-    }
-  }
-}
-
-void drawFooter(DisplayPrinter& printer) {
-  display.drawLine(0, SCREEN_HEIGHT - 20, SCREEN_WIDTH, SCREEN_HEIGHT - 20, GxEPD_BLACK);
-  
-  printer.setCursorY(SCREEN_HEIGHT - 6);
-  printer.setCursorX(3);
-  printer.setFont(u8g2_font_6x10_tf);
-  
-  String ssid = WiFi.SSID();
-  if (ssid.length() > 10) {
-    ssid = ssid.substring(0, 10);
-  }
-  printer.print(ssid);
-  
-  int rssi = WiFi.RSSI();
-  drawWiFiBars(printer.getCursorX() + 4, SCREEN_HEIGHT - 4, rssi);
-  
-  printer.setCursorX(90);
-  if (providers[GITHUB].username.length() > 0) {
-    String username = providers[GITHUB].username;
-    if (username.length() > 12) {
-      username = username.substring(0, 12);
-    }
-    printer.print("@" + username);
-  }
-  
-  printer.setCursorX(195);
-  printer.print(getFormattedTime());
-}
-
-void drawCategoryCell(DisplayPrinter& printer, const unsigned char* icon, const char* label, int count, int xOffset, int y) {
-  const int cellWidth = 115;
-  const int iconX = xOffset + 5;
-  const int labelX = iconX + 20;
-  
-  if (icon != nullptr) {
-    display.drawBitmap(iconX, y, icon, 16, 16, GxEPD_BLACK);
-  }
-  
-  printer.setFont(u8g2_font_helvB10_tf);
-  printer.setCursorX(labelX);
-  printer.setCursorY(y + 12);
-  printer.print(label);
-  
-  String countStr = String(count);
-  int digitWidth = 9;
-  int numberWidth = countStr.length() * digitWidth;
-  int rightEdge = xOffset + cellWidth;
-  int countX = rightEdge - numberWidth - 3;
-  
-  printer.setFont(u8g2_font_helvB14_tn);
-  printer.setCursorX(countX);
-  printer.setCursorY(y + 12);
-  printer.print(count);
-}
-
-bool shouldUpdateDisplay() {
-  if (!wifiConnected) return true;
-  
-  int total = providers[GITHUB].notificationCount;
-  int reviews = providers[GITHUB].reviewRequests;
-  int mentions = providers[GITHUB].mentions;
-  int assigned = providers[GITHUB].assignments;
-  int other = providers[GITHUB].otherReasons;
-  
-  if (total != lastDisplayedTotal ||
-      reviews != lastDisplayedReviews ||
-      mentions != lastDisplayedMentions ||
-      assigned != lastDisplayedAssignments ||
-      other != lastDisplayedOther) {
-    
-    lastDisplayedTotal = total;
-    lastDisplayedReviews = reviews;
-    lastDisplayedMentions = mentions;
-    lastDisplayedAssignments = assigned;
-    lastDisplayedOther = other;
-    
-    return true;
-  }
-  
-  return false;
-}
-
-void updateDisplay() {
-  if (!shouldUpdateDisplay()) {
-    Serial.println("[DISPLAY] No changes, skipping update");
-    return;
-  }
-  
-  Serial.println("[DISPLAY] Updating...");
-  display.setFullWindow();
-  display.firstPage();
-  
-  do {
-    display.fillScreen(GxEPD_WHITE);
-    display.setTextColor(GxEPD_BLACK);
-    
-    if (wifiConnected) {
-      int total = providers[GITHUB].notificationCount;
-      int reviews = providers[GITHUB].reviewRequests;
-      int mentions = providers[GITHUB].mentions;
-      int assigned = providers[GITHUB].assignments;
-      int other = providers[GITHUB].otherReasons;
-      
-      for (int y = 0; y < LOGO_SIZE; y++) {
-        for (int x = 0; x < LOGO_SIZE; x++) {
-          int byteIndex = (y * 4) + (x / 8);
-          int bitIndex = 7 - (x % 8);
-          bool isBlack = !(github_logo_32x32[byteIndex] & (1 << bitIndex));
-          if (isBlack) {
-            display.drawPixel(LOGO_X + x, LOGO_Y + y, GxEPD_BLACK);
-          }
-        }
-      }
-      
-      DisplayPrinter printer(&display, &u8g2Fonts);
-      printer.setMargins(TEXT_START_X, 30, 10);
-      printer.setFont(u8g2_font_helvB10_tf);
-      printer.setLineHeight(LINE_HEIGHT);
-      
-      printer.print("GitHub Notifications  ( ");
-      printer.print(total);
-      printer.println(" )");
-      
-      const int col1X = 5;
-      const int col2X = 125;
-      const int row1Y = LIST_START_Y;
-      const int row2Y = LIST_START_Y + 22;
-      
-      drawCategoryCell(printer, icon_review_16x16, "Review", reviews, col1X, row1Y);
-      drawCategoryCell(printer, icon_mention_16x16, "Mention", mentions, col2X, row1Y);
-      drawCategoryCell(printer, icon_assign_16x16, "Assigned", assigned, col1X, row2Y);
-      drawCategoryCell(printer, icon_other_16x16, "Other", other, col2X, row2Y);
-      
-      drawFooter(printer);
-      
-    } else {
-      DisplayPrinter printer(&display, &u8g2Fonts);
-      printer.setCursorX(65);
-      printer.setCursorY(80);
-      printer.setFont(u8g2_font_helvB14_tf);
-      printer.println("Setup Mode");
-      
-      printer.setCursorX(70);
-      printer.setFont(u8g2_font_helvR10_tf);
-      printer.print("192.168.4.1");
-    }
-  } while (display.nextPage());
-}
-
-void showWiFiConnecting() {
-  display.setFullWindow();
-  display.firstPage();
-  
-  do {
-    display.fillScreen(GxEPD_WHITE);
-    display.setTextColor(GxEPD_BLACK);
-    
-    DisplayPrinter printer(&display, &u8g2Fonts);
-    printer.setCursorX(10);
-    printer.setCursorY(50);
-    printer.setFont(u8g2_font_helvB12_tf);
-    printer.println("Connecting");
-    printer.setCursorX(10);
-    printer.print("WiFi...");
-  } while (display.nextPage());
-}
-
-void showConfigMode() {
-  display.setFullWindow();
-  display.firstPage();
-  
-  do {
-    display.fillScreen(GxEPD_WHITE);
-    display.setTextColor(GxEPD_BLACK);
-    
-    DisplayPrinter printer(&display, &u8g2Fonts);
-    printer.setMargins(5, 25, 5);
-    printer.setFont(u8g2_font_helvB12_tf);
-    printer.setLineHeight(20);
-    
-    printer.println("Setup Mode");
-    printer.println("WiFi:");
-    printer.println("NotificationHub");
-    printer.println("IP:192.168.4.1");
-  } while (display.nextPage());
-}
-
-void showError(String message) {
-  display.setFullWindow();
-  display.firstPage();
-  
-  do {
-    display.fillScreen(GxEPD_WHITE);
-    display.setTextColor(GxEPD_BLACK);
-    
-    DisplayPrinter printer(&display, &u8g2Fonts);
-    printer.setMargins(10, 40, 10);
-    printer.setFont(u8g2_font_helvB14_tf);
-    printer.setLineHeight(25);
-    
-    printer.println("Error!");
-    printer.setFont(u8g2_font_helvB10_tf);
-    printer.printWrapped(message.c_str());
-  } while (display.nextPage());
-}
-#endif
-
 void setup() {
   Serial.begin(115200);
   delay(100);
@@ -633,7 +302,7 @@ void setup() {
   Serial.println("\n[GPIO] Configuring pins...");
   pinMode(LED_STATUS, OUTPUT);
   pinMode(BUTTON_REFRESH, INPUT_PULLUP);
-  pinMode(BUTTON_WAKEUP, INPUT_PULLUP);
+  pinMode(BUTTON_WAKEUP, INPUT);
   digitalWrite(LED_STATUS, LOW);
   
   #ifdef ENABLE_DISPLAY
@@ -738,8 +407,33 @@ void loop() {
   if (digitalRead(BUTTON_WAKEUP) == LOW) {
     delay(50);
     if (digitalRead(BUTTON_WAKEUP) == LOW) {
-      Serial.println("\n[BUTTON] Wakeup button pressed - forcing refresh!");
+      unsigned long currentTime = millis();
+      if (currentTime - lastScreenSwitchTime < SCREEN_SWITCH_DEBOUNCE) {
+        Serial.println("\n[BUTTON] Debounced - please wait");
+        while(digitalRead(BUTTON_WAKEUP) == LOW) delay(10);
+        return;
+      }
+      
+      Serial.println("\n[BUTTON] Wakeup button pressed - switching screen!");
+      lastScreenSwitchTime = currentTime;
+      
+      currentScreen = (currentScreen + 1) % MAX_SCREENS;
+      Serial.print("[BUTTON] Switched to screen: ");
+      if (currentScreen == SCREEN_NOTIFICATIONS) {
+        Serial.println("Notifications");
+      } else if (currentScreen == SCREEN_PROFILE) {
+        Serial.println("Profile");
+      } else {
+        Serial.println("Activity");
+      }
+      
+      #ifdef ENABLE_DISPLAY
+      updateDisplay(true);
+      Serial.println("[BUTTON] Screen shown instantly, now fetching fresh data...");
+      #endif
+      
       updateAllProviders();
+      
       Serial.println("[BUTTON] Waiting for button release...");
       while(digitalRead(BUTTON_WAKEUP) == LOW) delay(10);
       Serial.println("[BUTTON] Button released");
@@ -776,92 +470,6 @@ void loop() {
   delay(100);
 }
 
-void initProviders() {
-  Serial.println("\n[INIT] Initializing providers...");
-  
-  providers[GITHUB].name = "github";
-  providers[GITHUB].displayName = "GitHub";
-  providers[GITHUB].enabled = false;
-  providers[GITHUB].notificationCount = 0;
-  providers[GITHUB].reviewRequests = 0;
-  providers[GITHUB].mentions = 0;
-  providers[GITHUB].assignments = 0;
-  providers[GITHUB].otherReasons = 0;
-  
-  Serial.println("[INIT] Base provider structure created");
-  loadProviderSettings();
-  Serial.println("[INIT] Providers initialized successfully");
-}
-
-void loadConfig() {
-  Serial.println("\n[CONFIG] Loading configuration from flash...");
-  preferences.begin("config", false);
-  config.wifi_ssid = preferences.getString("wifi_ssid", "");
-  config.wifi_password = preferences.getString("wifi_pass", "");
-  config.admin_password = preferences.getString("admin_pass", "admin");
-  config.update_interval = preferences.getInt("update_int", 10);
-  config.configured = preferences.getBool("configured", false);
-  preferences.end();
-  
-  Serial.println("[CONFIG] Configuration loaded:");
-  Serial.println("  WiFi SSID: " + config.wifi_ssid);
-  Serial.println("  WiFi Password: " + String(config.wifi_password.length() > 0 ? "***SET***" : "***NOT SET***"));
-  Serial.println("  Admin Password: " + String(config.admin_password.length() > 0 ? "***SET***" : "***NOT SET***"));
-  Serial.println("  Update Interval: " + String(config.update_interval) + " minutes");
-  Serial.println("  Configured: " + String(config.configured ? "YES" : "NO"));
-}
-
-void saveConfig() {
-  Serial.println("\n[CONFIG] Saving configuration to flash...");
-  preferences.begin("config", false);
-  preferences.putString("wifi_ssid", config.wifi_ssid);
-  preferences.putString("wifi_pass", config.wifi_password);
-  preferences.putString("admin_pass", config.admin_password);
-  preferences.putInt("update_int", config.update_interval);
-  preferences.putBool("configured", config.configured);
-  preferences.end();
-  Serial.println("[CONFIG] Configuration saved successfully!");
-  Serial.println("  WiFi SSID: " + config.wifi_ssid);
-  Serial.println("  Update Interval: " + String(config.update_interval) + " minutes");
-}
-
-void loadProviderSettings() {
-  Serial.println("\n[PROVIDERS] Loading provider settings from flash...");
-  preferences.begin("providers", false);
-  int enabledCount = 0;
-  for (int i = 0; i < MAX_PROVIDERS; i++) {
-    String prefix = providers[i].name + "_";
-    providers[i].enabled = preferences.getBool((prefix + "enabled").c_str(), false);
-    providers[i].apiToken = preferences.getString((prefix + "token").c_str(), "");
-    
-    Serial.print("[PROVIDERS]   " + providers[i].displayName + ": ");
-    Serial.print(providers[i].enabled ? "ENABLED" : "DISABLED");
-    Serial.println(providers[i].apiToken.length() > 0 ? " (Token set)" : " (No token)");
-    
-    if (providers[i].enabled) enabledCount++;
-  }
-  preferences.end();
-  Serial.println("[PROVIDERS] Loaded " + String(enabledCount) + " enabled provider(s)");
-}
-
-void saveProviderSettings() {
-  Serial.println("\n[PROVIDERS] Saving provider settings to flash...");
-  preferences.begin("providers", false);
-  int enabledCount = 0;
-  for (int i = 0; i < MAX_PROVIDERS; i++) {
-    String prefix = providers[i].name + "_";
-    preferences.putBool((prefix + "enabled").c_str(), providers[i].enabled);
-    preferences.putString((prefix + "token").c_str(), providers[i].apiToken);
-    
-    Serial.print("[PROVIDERS]   " + providers[i].displayName + ": ");
-    Serial.println(providers[i].enabled ? "ENABLED" : "DISABLED");
-    
-    if (providers[i].enabled) enabledCount++;
-  }
-  preferences.end();
-  Serial.println("[PROVIDERS] Saved " + String(enabledCount) + " enabled provider(s)");
-}
-
 void connectWiFi(String ssid, String password) {
   Serial.println("\n[WIFI] Connecting to WiFi");
   
@@ -889,7 +497,7 @@ void connectWiFi(String ssid, String password) {
     Serial.println(WiFi.localIP());
     digitalWrite(LED_STATUS, HIGH);
     #ifdef ENABLE_DISPLAY
-    updateDisplay();
+    updateDisplay(true);
     #endif
   } else {
     wifiConnected = false;
@@ -920,460 +528,4 @@ void startConfigMode() {
     showError("AP failed");
     #endif
   }
-}
-
-void updateAllProviders() {
-  Serial.println("\n[UPDATE] Starting update...");
-  
-  activeProviders = 0;
-  for (int i = 0; i < MAX_PROVIDERS; i++) {
-    if (providers[i].enabled && providers[i].apiToken.length() > 0) {
-      activeProviders++;
-    }
-  }
-  
-  for (int i = 0; i < MAX_PROVIDERS; i++) {
-    if (providers[i].enabled && providers[i].apiToken.length() > 0) {
-      updateProvider(i);
-      delay(1000);
-    }
-  }
-  
-  totalNotifications = 0;
-  for (int i = 0; i < MAX_PROVIDERS; i++) {
-    if (providers[i].enabled) {
-      totalNotifications += providers[i].notificationCount;
-    }
-  }
-  
-  time(&lastUpdateTimestamp);
-  
-  Serial.print("[UPDATE] Complete - Total: ");
-  Serial.println(totalNotifications);
-  
-  #ifdef ENABLE_DISPLAY
-  updateDisplay();
-  #endif
-}
-
-struct HttpResponse {
-  int code;
-  bool success;
-};
-
-HttpResponse makeHttpsRequest(WiFiClientSecure* client, const String& url, const String& authToken, DynamicJsonDocument* doc, const String& userAgent = "ESP32-NotificationHub") {
-  HttpResponse response = {0, false};
-  
-  HTTPClient* https = new HTTPClient();
-  if (!https) {
-    Serial.println("[HTTP] Failed to create HTTPClient");
-    return response;
-  }
-  
-  if (!https->begin(*client, url)) {
-    Serial.println("[HTTP] Connection failed");
-    delete https;
-    return response;
-  }
-  
-  https->addHeader("Authorization", "Bearer " + authToken);
-  https->addHeader("User-Agent", userAgent);
-  https->addHeader("Accept", "application/vnd.github+json");
-  https->setTimeout(HTTP_TIMEOUT_MS);
-  
-  response.code = https->GET();
-  
-  if (response.code == 200 && doc != nullptr) {
-    String payload = https->getString();
-    DeserializationError error = deserializeJson(*doc, payload);
-    payload = "";
-    
-    if (!error) {
-      response.success = true;
-    } else {
-      Serial.print("[HTTP] JSON parse error: ");
-      Serial.println(error.c_str());
-    }
-  }
-  
-  https->end();
-  delete https;
-  
-  return response;
-}
-
-void updateProvider(int idx) {
-  Serial.print("[PROVIDER] Updating ");
-  Serial.print(providers[idx].displayName);
-  Serial.println("...");
-  unsigned long startTime = millis();
-  
-  switch(idx) {
-    case GITHUB:
-      updateGitHub(idx);
-      break;
-    default:
-      Serial.println("[PROVIDER] Not implemented");
-      providers[idx].lastError = "Not implemented";
-      break;
-  }
-  
-  unsigned long duration = millis() - startTime;
-  Serial.print("[PROVIDER] Update took ");
-  Serial.print(duration);
-  Serial.println("ms");
-}
-
-void updateGitHub(int idx) {
-  Serial.print("[GITHUB] Heap: ");
-  Serial.println(ESP.getFreeHeap());
-  
-  WiFiClientSecure *client = new WiFiClientSecure;
-  if (!client) {
-    Serial.println("[GITHUB] ✗ Out of memory");
-    providers[idx].lastError = "Out of memory";
-    return;
-  }
-  client->setInsecure();
-  
-  if (providers[idx].username.length() == 0) {
-    DynamicJsonDocument userDoc(1024);
-    HttpResponse userResp = makeHttpsRequest(client, "https://api.github.com/user", providers[idx].apiToken, &userDoc);
-    if (userResp.success && userDoc.containsKey("login")) {
-      providers[idx].username = userDoc["login"].as<String>();
-      Serial.print("[GITHUB] Username: ");
-      Serial.println(providers[idx].username);
-    }
-    userDoc.clear();
-  }
-  
-  int totalUnread = 0;
-  int totalChecked = 0;
-  int reviews = 0;
-  int mentionCount = 0;
-  int assignCount = 0;
-  int otherCount = 0;
-  int page = 1;
-  char urlBuffer[128];
-  
-  while (page <= GITHUB_MAX_PAGES) {
-    snprintf(urlBuffer, sizeof(urlBuffer), "https://api.github.com/notifications?per_page=%d&page=%d", GITHUB_PER_PAGE, page);
-    
-    Serial.print("[GITHUB] Page ");
-    Serial.print(page);
-    Serial.print(" - Free heap: ");
-    Serial.print(ESP.getFreeHeap());
-    Serial.print(", Max alloc: ");
-    Serial.println(ESP.getMaxAllocHeap());
-    
-    DynamicJsonDocument doc(JSON_BUFFER_SIZE);
-    HttpResponse pageResp = makeHttpsRequest(client, String(urlBuffer), providers[idx].apiToken, &doc);
-    
-    if (!pageResp.success) {
-      if (page == 1) {
-        Serial.print("[GITHUB] ✗ HTTP ");
-        Serial.println(pageResp.code);
-        if (pageResp.code == 401) providers[idx].lastError = "Invalid token";
-        else if (pageResp.code == 403) providers[idx].lastError = "Rate limited";
-        else if (pageResp.code <= 0) providers[idx].lastError = "Request failed";
-        else providers[idx].lastError = "HTTP error";
-      }
-      doc.clear();
-      break;
-    }
-    
-    if (!doc.is<JsonArray>()) {
-      if (page == 1) {
-        Serial.println("[GITHUB] ✗ Not an array");
-        providers[idx].lastError = "Invalid response";
-      }
-      doc.clear();
-      break;
-    }
-    
-    JsonArray notifications = doc.as<JsonArray>();
-    int pageCount = notifications.size();
-    
-    if (pageCount == 0) {
-      doc.clear();
-      break;
-    }
-    
-    for (size_t i = 0; i < pageCount; i++) {
-      totalChecked++;
-      
-      JsonVariant unreadVar = notifications[i]["unread"];
-      if (!unreadVar.isNull() && unreadVar.as<bool>()) {
-        totalUnread++;
-        
-        const char* reason = notifications[i]["reason"];
-        if (strcmp(reason, "review_requested") == 0) {
-          reviews++;
-        } else if (strcmp(reason, "mention") == 0) {
-          mentionCount++;
-        } else if (strcmp(reason, "assign") == 0) {
-          assignCount++;
-        } else {
-          otherCount++;
-        }
-      }
-    }
-    
-    Serial.print("[GITHUB] Page ");
-    Serial.print(page);
-    Serial.print(": +");
-    Serial.println(pageCount);
-    
-    if (pageCount < GITHUB_PER_PAGE) {
-      break;
-    }
-    
-    doc.clear();
-    page++;
-    delay(200);
-    yield();
-  }
-  
-  delete client;
-  
-  Serial.print("[GITHUB] Final heap: ");
-  Serial.print(ESP.getFreeHeap());
-  Serial.print(" bytes, Max alloc: ");
-  Serial.println(ESP.getMaxAllocHeap());
-  
-  providers[idx].notificationCount = totalUnread;
-  providers[idx].reviewRequests = reviews;
-  providers[idx].mentions = mentionCount;
-  providers[idx].assignments = assignCount;
-  providers[idx].otherReasons = otherCount;
-  providers[idx].lastUpdate = millis();
-  providers[idx].lastError = "";
-  
-  Serial.print("[GITHUB] ✓ ");
-  Serial.print(totalUnread);
-  Serial.print("/");
-  Serial.print(totalChecked);
-  Serial.print(" (");
-  Serial.print(page - 1);
-  Serial.println(" pages)");
-  
-  Serial.print("[GITHUB] Reviews: ");
-  Serial.print(reviews);
-  Serial.print(", Mentions: ");
-  Serial.print(mentionCount);
-  Serial.print(", Assigned: ");
-  Serial.print(assignCount);
-  Serial.print(", Other: ");
-  Serial.println(otherCount);
-  
-#ifdef ENABLE_DISPLAY
-  updateDisplay();
-#endif
-}
-
-void setupWebServer() {
-  Serial.println("\n[WEB] Setting up web server...");
-  
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/api/status", HTTP_GET, handleStatus);
-  server.on("/api/config", HTTP_POST, handleSaveConfig);
-  server.on("/api/providers", HTTP_GET, handleGetProviders);
-  server.on("/api/providers", HTTP_POST, handleSaveProviders);
-  server.on("/api/refresh", HTTP_POST, handleRefresh);
-  server.on("/api/reset", HTTP_POST, handleReset);
-  
-  server.begin();
-  Serial.println("[WEB] Web server started on port 80");
-  Serial.println("[WEB] Registered endpoints:");
-  Serial.println("[WEB]   GET  /");
-  Serial.println("[WEB]   GET  /api/status");
-  Serial.println("[WEB]   POST /api/config");
-  Serial.println("[WEB]   GET  /api/providers");
-  Serial.println("[WEB]   POST /api/providers");
-  Serial.println("[WEB]   POST /api/refresh");
-  Serial.println("[WEB]   POST /api/reset");
-}
-
-const char HTML_PAGE[] PROGMEM = R"(<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>Notification Hub</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px}.container{max-width:800px;margin:0 auto}.card{background:white;border-radius:16px;padding:24px;margin-bottom:20px;box-shadow:0 8px 16px rgba(0,0,0,0.1)}h1{color:#2d3748;margin-bottom:8px}h2{color:#4a5568;margin-bottom:16px;font-size:20px}.subtitle{color:#718096;margin-bottom:24px}.form-group{margin-bottom:20px}label{display:block;color:#4a5568;font-weight:600;margin-bottom:8px;font-size:14px}input[type='text'],input[type='password'],input[type='number']{width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px}input:focus{outline:none;border-color:#667eea}button{padding:12px 24px;background:#667eea;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;width:100%;margin-top:8px}button:hover{background:#5568d3}.status{display:flex;justify-content:space-between;padding:12px;background:#edf2f7;border-radius:8px;margin-bottom:16px}.indicator{width:12px;height:12px;border-radius:50%;background:#48bb78}.provider{padding:16px;border:2px solid #e2e8f0;border-radius:8px;margin-bottom:12px}.badge{background:#f3e8ff;color:#6b21a8;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600}.message{padding:12px;border-radius:8px;margin-bottom:16px}.success{background:#c6f6d5;color:#22543d}.error{background:#fed7d7;color:#742a2a}.tabs{display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid #e2e8f0}.tab{padding:12px 20px;background:none;border:none;color:#718096;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;width:auto}.tab.active{color:#667eea;border-bottom-color:#667eea}.tab-content{display:none}.tab-content.active{display:block}</style></head><body><div class='container'><div class='card'><h1>🔔 Notification Hub</h1><p class='subtitle'>Configure your notification dashboard</p><div class='status'><div><div class='indicator' id='wifi'></div><span id='wifiStatus'>Checking...</span></div><div><span id='total'>0 notifications</span></div></div><div class='tabs'><button class='tab active' onclick='showTab(0)'>Dashboard</button><button class='tab' onclick='showTab(1)'>WiFi</button><button class='tab' onclick='showTab(2)'>Providers</button><button class='tab' onclick='showTab(3)'>Settings</button></div><div id='msg'></div><div id='tab0' class='tab-content active'><h2>Status</h2><div id='dashboard'>Loading...</div><button onclick='refresh()'>Refresh Now</button></div><div id='tab1' class='tab-content'><h2>WiFi Configuration</h2><form onsubmit='saveWiFi(event)'><div class='form-group'><label>WiFi SSID</label><input type='text' id='ssid' required></div><div class='form-group'><label>WiFi Password</label><input type='password' id='pass'></div><div class='form-group'><label>Admin Password</label><input type='password' id='admin' required></div><button type='submit'>Save WiFi</button></form></div><div id='tab2' class='tab-content'><h2>Providers</h2><div id='providerList'></div><button onclick='saveProviders()'>Save Providers</button></div><div id='tab3' class='tab-content'><h2>Settings</h2><form onsubmit='saveSettings(event)'><div class='form-group'><label>Update Interval (minutes)</label><input type='number' id='interval' min='1' max='1440' value='10'></div><div class='form-group'><label>Admin Password</label><input type='password' id='adminConfirm' required></div><button type='submit'>Save Settings</button></form></div></div></div><script>let providers=[];function showTab(n){document.querySelectorAll('.tab').forEach((t,i)=>{t.classList.toggle('active',i===n)});document.querySelectorAll('.tab-content').forEach((c,i)=>{c.classList.toggle('active',i===n)})}async function loadStatus(){try{const r=await fetch('/api/status');const d=await r.json();document.getElementById('wifiStatus').textContent=d.wifiConnected?'Connected':'Not connected';document.getElementById('total').textContent=d.totalNotifications+' notifications';let html='';if(d.providers&&d.providers.length>0){d.providers.forEach(p=>{html+=`<div class='provider'><span class='badge'>${p.displayName}</span>: ${p.count} notifications</div>`})}else{html='<p>No providers configured</p>'}document.getElementById('dashboard').innerHTML=html}catch(e){console.error(e)}}async function loadProviders(){try{const r=await fetch('/api/providers');const d=await r.json();providers=d.providers;let html='';providers.forEach(p=>{html+=`<div class='provider'><label><input type='checkbox' ${p.enabled?'checked':''} onchange='providers[${p.id}].enabled=this.checked'> ${p.displayName}</label><input type='password' id='token${p.id}' placeholder='API Token' style='margin-top:8px'></div>`});document.getElementById('providerList').innerHTML=html}catch(e){console.error(e)}}async function saveWiFi(e){e.preventDefault();const params=new URLSearchParams();params.append('wifi_ssid',document.getElementById('ssid').value);params.append('wifi_password',document.getElementById('pass').value);params.append('admin_password',document.getElementById('admin').value);try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params});const d=await r.json();showMsg(d.message||'Saved! Rebooting...','success')}catch(e){showMsg('Error: '+e.message,'error')}}async function saveProviders(){const pass=prompt('Enter admin password:');if(!pass)return;const data=providers.map(p=>{const token=document.getElementById('token'+p.id).value;return{id:p.id,enabled:p.enabled,apiToken:token||undefined}});try{const r=await fetch('/api/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({admin_password:pass,providers:data})});const d=await r.json();showMsg(d.message||'Saved!','success');loadProviders();loadStatus()}catch(e){showMsg('Error: '+e.message,'error')}}async function saveSettings(e){e.preventDefault();const params=new URLSearchParams();params.append('update_interval',document.getElementById('interval').value);params.append('admin_password',document.getElementById('adminConfirm').value);try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params});const d=await r.json();showMsg(d.message||'Saved!','success')}catch(e){showMsg('Error: '+e.message,'error')}}async function refresh(){try{await fetch('/api/refresh',{method:'POST'});showMsg('Refreshing...','success');setTimeout(loadStatus,2000)}catch(e){showMsg('Error: '+e.message,'error')}}function showMsg(text,type){const msg=document.getElementById('msg');msg.className='message '+type;msg.textContent=text;setTimeout(()=>msg.textContent='',5000)}loadStatus();loadProviders();setInterval(loadStatus,30000)</script></body></html>)";
-
-void handleRoot() {
-  Serial.println("[WEB] Request: GET / from " + server.client().remoteIP().toString());
-  server.send_P(200, "text/html", HTML_PAGE);
-  Serial.println("[WEB] Response: 200 OK (HTML page)");
-}
-
-void handleStatus() {
-  Serial.println("[WEB] Request: GET /api/status");
-  
-  DynamicJsonDocument doc(2048);
-  doc["wifiConnected"] = wifiConnected;
-  doc["ssid"] = config.wifi_ssid;
-  doc["ip"] = WiFi.localIP().toString();
-  doc["updateInterval"] = config.update_interval;
-  
-  JsonArray providersArray = doc.createNestedArray("providers");
-  int total = 0;
-  
-  for (int i = 0; i < MAX_PROVIDERS; i++) {
-    if (providers[i].enabled) {
-      JsonObject p = providersArray.createNestedObject();
-      p["name"] = providers[i].name;
-      p["displayName"] = providers[i].displayName;
-      p["count"] = providers[i].notificationCount;
-      p["reviews"] = providers[i].reviewRequests;
-      p["mentions"] = providers[i].mentions;
-      p["assignments"] = providers[i].assignments;
-      p["other"] = providers[i].otherReasons;
-      total += providers[i].notificationCount;
-    }
-  }
-  
-  doc["totalNotifications"] = total;
-  
-  String response;
-  serializeJson(doc, response);
-  server.send(200, "application/json", response);
-  Serial.println("[WEB] Response: 200 OK");
-}
-
-void handleSaveConfig() {
-  Serial.println("[WEB] Request: POST /api/config from " + server.client().remoteIP().toString());
-  
-  String password = server.arg("admin_password");
-  
-  if (password != config.admin_password && config.configured) {
-    Serial.println("[WEB] ✗ Invalid admin password");
-    server.send(401, "application/json", "{\"error\":\"Invalid password\"}");
-    return;
-  }
-  
-  Serial.println("[WEB] Updating configuration...");
-  if (server.hasArg("wifi_ssid")) {
-    config.wifi_ssid = server.arg("wifi_ssid");
-    Serial.println("[WEB]   New SSID: " + config.wifi_ssid);
-  }
-  if (server.hasArg("wifi_password")) {
-    config.wifi_password = server.arg("wifi_password");
-    Serial.println("[WEB]   New WiFi password set");
-  }
-  if (server.hasArg("update_interval")) {
-    config.update_interval = server.arg("update_interval").toInt();
-    Serial.println("[WEB]   New update interval: " + String(config.update_interval) + " minutes");
-  }
-  
-  config.configured = true;
-  saveConfig();
-  
-  server.send(200, "application/json", "{\"success\":true,\"message\":\"Saved. Rebooting...\"}");
-  Serial.println("[WEB] Configuration saved. Rebooting in 1 second...");
-  delay(1000);
-  ESP.restart();
-}
-
-void handleGetProviders() {
-  Serial.println("[WEB] Request: GET /api/providers");
-  
-  DynamicJsonDocument doc(2048);
-  JsonArray providersArray = doc.createNestedArray("providers");
-  
-  for (int i = 0; i < MAX_PROVIDERS; i++) {
-    JsonObject p = providersArray.createNestedObject();
-    p["id"] = i;
-    p["name"] = providers[i].name;
-    p["displayName"] = providers[i].displayName;
-    p["enabled"] = providers[i].enabled;
-    p["hasToken"] = providers[i].apiToken.length() > 0;
-    p["count"] = providers[i].notificationCount;
-  }
-  
-  String response;
-  serializeJson(doc, response);
-  server.send(200, "application/json", response);
-  Serial.println("[WEB] Response: 200 OK");
-}
-
-void handleSaveProviders() {
-  Serial.println("[WEB] Request: POST /api/providers");
-  
-  DynamicJsonDocument doc(2048);
-  DeserializationError error = deserializeJson(doc, server.arg("plain"));
-  
-  if (error) {
-    Serial.println("[WEB] ✗ Invalid JSON");
-    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
-  
-  String password = doc["admin_password"].as<String>();
-  if (password != config.admin_password) {
-    Serial.println("[WEB] ✗ Invalid password");
-    server.send(401, "application/json", "{\"error\":\"Invalid password\"}");
-    return;
-  }
-  
-  Serial.println("[WEB] Updating providers...");
-  JsonArray providersArray = doc["providers"];
-  int updatedCount = 0;
-  
-  for (JsonObject p : providersArray) {
-    int id = p["id"].as<int>();
-    
-    if (id >= 0 && id < MAX_PROVIDERS) {
-      providers[id].enabled = p["enabled"].as<bool>();
-      Serial.print("[WEB] ");
-      Serial.print(providers[id].displayName);
-      Serial.println(providers[id].enabled ? ": ENABLED" : ": DISABLED");
-      
-      if (p.containsKey("apiToken")) {
-        String token = p["apiToken"].as<String>();
-        if (token.length() > 0) {
-          providers[id].apiToken = token;
-          Serial.println("[WEB] Token updated");
-        }
-      }
-      updatedCount++;
-    }
-  }
-  
-  saveProviderSettings();
-  Serial.println("[WEB] ✓ Saved");
-  server.send(200, "application/json", "{\"success\":true,\"message\":\"Saved\"}");
-}
-
-void handleRefresh() {
-  Serial.println("[WEB] Request: POST /api/refresh from " + server.client().remoteIP().toString());
-  Serial.println("[WEB] Manual refresh triggered via web interface");
-  updateAllProviders();
-  server.send(200, "application/json", "{\"success\":true}");
-  Serial.println("[WEB] Response: 200 OK (refresh complete)");
-}
-
-void handleReset() {
-  Serial.println("[WEB] Request: POST /api/reset from " + server.client().remoteIP().toString());
-  
-  String password = server.arg("admin_password");
-  
-  if (password != config.admin_password) {
-    Serial.println("[WEB] ✗ Invalid admin password");
-    server.send(401, "application/json", "{\"error\":\"Invalid password\"}");
-    return;
-  }
-  
-  Serial.println("[WEB] ⚠ FACTORY RESET initiated!");
-  Serial.println("[WEB] Clearing all configuration...");
-  
-  preferences.begin("config", false);
-  preferences.clear();
-  preferences.end();
-  Serial.println("[WEB]   Config cleared");
-  
-  preferences.begin("providers", false);
-  preferences.clear();
-  preferences.end();
-  Serial.println("[WEB]   Provider settings cleared");
-  
-  server.send(200, "application/json", "{\"success\":true,\"message\":\"Reset. Rebooting...\"}");
-  Serial.println("[WEB] Factory reset complete. Rebooting in 1 second...");
-  delay(1000);
-  ESP.restart();
 }

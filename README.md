@@ -6,13 +6,21 @@ A smart notification dashboard for GitHub notifications running on ESP32 with an
 
 ## Features
 
-- **Real-time GitHub Notifications**: Fetches and displays unread GitHub notifications
+- **Multi-Screen Dashboard**: Three screens accessible via button press:
+  - **Notifications**: Real-time unread GitHub notifications with category breakdown
+  - **Profile**: GitHub profile statistics (repos, stars, open PRs, followers)
+  - **Activity**: Contribution metrics (today's commits, weekly total, streak, 30-day total)
+- **Smart Screen Cycling**: Button on GPIO 39 cycles through screens with 4-second debounce
+- **Efficient API Usage**: 
+  - REST API for notifications
+  - GraphQL API for profile and activity data (minimized payload size)
 - **Category Breakdown**: Organizes notifications by type:
   - Review Requests
   - Mentions
   - Assignments
   - Other notifications
 - **E-Paper Display**: Low-power 2.13" black & white e-paper screen
+- **Optimized Refresh**: Only updates display when data actually changes
 - **Deep Sleep Support**: Energy-efficient operation with configurable wake intervals
 - **Web Interface**: Configure WiFi, API tokens, and settings via browser
 - **WiFi Auto-Connect**: Remembers your WiFi credentials
@@ -54,11 +62,14 @@ A smart notification dashboard for GitHub notifications running on ESP32 with an
 
 1. Generate a GitHub Personal Access Token:
    - Go to GitHub Settings → Developer settings → Personal access tokens
-   - Create a **Classic token** with `notifications` scope
+   - Create a **Classic token** with the following scopes:
+     - `notifications` - For fetching notifications
+     - `read:user` - For profile and activity data
 2. In the web interface, go to **Providers** tab
 3. Enable GitHub provider
-4. Paste your token
-5. Enter admin password and click **Save Providers**
+4. Enter your GitHub username
+5. Paste your token
+6. Enter admin password and click **Save Providers**
 
 #### Settings
 
@@ -67,9 +78,11 @@ A smart notification dashboard for GitHub notifications running on ESP32 with an
 
 ## Usage
 
-### Display Information
+### Display Screens
 
-The e-paper screen shows:
+The device has three screens that you can cycle through by pressing the button on GPIO 39:
+
+#### 1. Notifications Screen
 
 - GitHub logo
 - Total notification count
@@ -78,15 +91,42 @@ The e-paper screen shows:
   - @ Mentions
   - 👤 Assignments
   - ! Other
-- Footer with:
-  - WiFi signal strength (dBm)
-  - Last update time
-  - Current time
+- Footer with WiFi SSID and connection status
+
+#### 2. Profile Screen
+
+- GitHub logo
+- Profile title
+- Statistics with icons:
+  - 📦 Public Repos
+  - ⭐ Total Stars (across all repos)
+  - 🔀 Open Pull Requests
+  - 👥 Followers
+- Footer with WiFi SSID and connection status
+
+#### 3. Activity Screen
+
+- GitHub logo
+- Activity title
+- Contribution metrics with icons:
+  - 📝 Today's Commits
+  - 📅 This Week's Contributions
+  - 🔥 Current Streak (days)
+  - 📊 30-Day Total Contributions
+- Footer with WiFi SSID and connection status
+
+### Screen Cycling
+
+- Press the **button on GPIO 39** to cycle through screens:
+  - Notifications → Profile → Activity → (back to) Notifications
+- Button has **4-second debounce** to prevent accidental double-presses
+- **Instant visual feedback**: Screen switches immediately, then fetches fresh data
+- Each screen only updates its data when active (saves API calls)
 
 ### Manual Refresh
 
-- Press the **Refresh button** (GPIO 0) to force update
-- Press the **Wake button** (GPIO 39) to wake from sleep and refresh
+- Press the **Refresh button** (GPIO 0) to force update current screen
+- Press the **Screen Cycle button** (GPIO 39) to switch screens (also refreshes data)
 - Use the **Refresh Now** button in the web interface
 
 ### Web Interface Endpoints
@@ -107,16 +147,25 @@ When enabled (default), the device:
 
 1. Wakes up every N minutes (configurable)
 2. Connects to WiFi
-3. Fetches notifications
-4. Updates display
+3. Fetches data for current active screen (Notifications/Profile/Activity)
+4. Updates display if data changed
 5. Enters deep sleep
 
 **Wake Sources**:
 
 - Timer (based on update interval)
-- Button press on GPIO 39
+- Button press on GPIO 39 (cycles to next screen and updates)
 
 **Web Server Timeout**: Device stays awake for 30 seconds after boot to allow web access, then sleeps
+
+### Smart Display Updates
+
+The device implements intelligent display refresh logic:
+
+- Only updates display when data actually changes
+- Tracks last displayed values for each screen
+- Prevents unnecessary e-paper refreshes (reduces flicker and extends display life)
+- Each screen maintains its own update state independently
 
 ### Disabling Sleep
 
@@ -210,6 +259,14 @@ U8g2_for_Adafruit_GFX.h    // Font rendering
 
 ### Display Architecture
 
+**Multi-Screen System**: The code is organized into modular screen drawing functions:
+
+- `drawNotificationScreen()` - Notifications with category breakdown
+- `drawProfileScreen()` - GitHub profile statistics  
+- `drawActivityScreen()` - Contribution metrics
+- `updateDisplay(bool forceUpdate)` - Smart update router
+- `shouldUpdateDisplay()` - Change detection for each screen
+
 **DisplayPrinter Class**: A text layout manager that handles:
 
 - Automatic line wrapping
@@ -217,6 +274,16 @@ U8g2_for_Adafruit_GFX.h    // Font rendering
 - Font switching
 - Cursor positioning
 - Bitmap drawing
+
+### Code Organization
+
+The project is split into multiple `.ino` files for maintainability:
+
+- `github-dash-epaper.ino` - Main sketch, setup, loop, DisplayPrinter class
+- `display.ino` - All display functions and screen rendering
+- `github.ino` - GitHub API integration (REST + GraphQL)
+- `config.ino` - Configuration management (Preferences)
+- `webserver.ino` - Web interface and API endpoints
 
 ### Memory Optimization
 
@@ -231,11 +298,17 @@ The code uses several techniques to manage ESP32's limited memory:
 
 GitHub API rate limits:
 
-- **5,000 requests/hour** for authenticated requests
-- This device makes 1 request per page per update cycle
-- With default settings (10-minute intervals, 25 max pages):
-  - Worst case: 25 requests every 10 minutes = 150 requests/hour
-  - Well under the limit
+- **5,000 requests/hour** for authenticated requests (REST API)
+- **5,000 points/hour** for GraphQL API (queries cost 1-50 points typically)
+
+This device makes:
+- **Notifications Screen**: 1 request per page per update (REST API)
+- **Profile Screen**: 1 GraphQL query per update (~5-10 points)
+- **Activity Screen**: 1 GraphQL query per update (~5-10 points)
+
+With default settings (10-minute intervals, 25 max pages):
+- Worst case: 25 REST + 2 GraphQL requests every 10 minutes = ~170 requests/hour
+- Well under the limit for typical usage
 
 ## Security Considerations
 
@@ -263,9 +336,26 @@ MIT License - Feel free to modify and distribute
 - GxEPD2 library for e-paper display support
 - ArduinoJson for efficient JSON parsing
 - ESP32 Arduino framework
-- GitHub API v3
+- GitHub REST API v3
+- GitHub GraphQL API v4
 
 ---
 
-**Version**: 1.0  
+**Version**: 2.0  
 **Last Updated**: November 2025
+
+## Changelog
+
+### Version 2.0 (November 2025)
+- ✨ Added Profile screen with GitHub statistics
+- ✨ Added Activity screen with contribution metrics
+- ✨ Implemented screen cycling via button (GPIO 39)
+- ✨ Integrated GitHub GraphQL API for efficient data fetching
+- ✨ Added 4-second button debounce
+- ✨ Smart per-screen data updates (only updates active screen)
+- ✨ Optimized display refresh logic
+- 🐛 Fixed double-refresh bug on screen switch
+- 📝 Split code into multiple files for better maintainability
+
+### Version 1.0
+- Initial release with notification display

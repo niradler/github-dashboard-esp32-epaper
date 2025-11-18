@@ -85,6 +85,8 @@ The Arduino MCP server provides tools for:
 7. Repeat
 ```
 
+**IMPORTANT**: After making code changes, ALWAYS compile and upload automatically unless waiting for user input/response on a question. Don't ask permission - just upload. This saves time and keeps the device in sync with the code.
+
 #### 3. Debugging
 ```
 1. Open serial monitor at 115200 baud
