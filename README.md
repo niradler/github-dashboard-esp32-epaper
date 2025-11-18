@@ -84,6 +84,8 @@ The device has three screens that you can cycle through by pressing the button o
 
 #### 1. Notifications Screen
 
+![Notifications Screen](screenshots/notifications.jpg)
+
 - GitHub logo
 - Total notification count
 - Category breakdown with icons:
@@ -95,6 +97,8 @@ The device has three screens that you can cycle through by pressing the button o
 
 #### 2. Profile Screen
 
+![Profile Screen](screenshots/profile.jpg)
+
 - GitHub logo
 - Profile title
 - Statistics with icons:
@@ -105,6 +109,8 @@ The device has three screens that you can cycle through by pressing the button o
 - Footer with WiFi SSID and connection status
 
 #### 3. Activity Screen
+
+![Activity Screen](screenshots/activity.jpg)
 
 - GitHub logo
 - Activity title
