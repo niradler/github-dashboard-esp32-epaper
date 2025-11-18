@@ -28,6 +28,7 @@ A smart notification dashboard for GitHub notifications running on ESP32 with an
 
 - **ESP32** development board
 - **GxEPD2_213_BN** 2.13" e-paper display (250x122 pixels)
+  - Tested with: [LilyGo T5 2.13" E-Paper](https://lilygo.cc/products/t5-2-13inch-e-paper)
 - **Wiring**:
   - CS: GPIO 5
   - DC: GPIO 17
@@ -281,125 +282,38 @@ Connect at **115200 baud** to see detailed logs:
 3. Provide admin password
 4. Device will clear all settings and reboot
 
-## Development
+## Dependencies
 
-### Required Libraries
+### Arduino Libraries
 
-```cpp
-WiFi.h                      // ESP32 WiFi
-WiFiClientSecure.h          // HTTPS support
-HTTPClient.h                // HTTP requests
-WebServer.h                 // Web interface
-Preferences.h               // Persistent storage
-ArduinoJson.h              // JSON parsing
-time.h                     // Time functions
-GxEPD2_BW.h                // E-paper display driver
-U8g2_for_Adafruit_GFX.h    // Font rendering
-```
+- **WiFi.h** - ESP32 WiFi support
+- **WiFiClientSecure.h** - HTTPS/TLS connections
+- **HTTPClient.h** - HTTP client for API requests
+- **WebServer.h** - Configuration web interface
+- **Preferences.h** - Non-volatile storage
+- **ArduinoJson** - JSON parsing and serialization
+- **GxEPD2_BW** - E-paper display driver
+- **U8g2_for_Adafruit_GFX** - Advanced font rendering
 
-### Display Architecture
+All libraries can be installed via Arduino Library Manager.
 
-**Multi-Screen System**: The code is organized into modular screen drawing functions:
+## Development Tools
 
-- `drawNotificationScreen()` - Notifications with category breakdown
-- `drawProfileScreen()` - GitHub profile statistics
-- `drawActivityScreen()` - Contribution metrics
-- `updateDisplay(bool forceUpdate)` - Smart update router
-- `shouldUpdateDisplay()` - Change detection for each screen
+This project was built using:
 
-**DisplayPrinter Class**: A text layout manager that handles:
-
-- Automatic line wrapping
-- Margin management
-- Font switching
-- Cursor positioning
-- Bitmap drawing
-
-### Code Organization
-
-The project is split into multiple `.ino` files for maintainability:
-
-- `github-dash-epaper.ino` - Main sketch, setup, loop, DisplayPrinter class
-- `display.ino` - All display functions and screen rendering
-- `github.ino` - GitHub API integration (REST + GraphQL)
-- `config.ino` - Configuration management (Preferences)
-- `webserver.ino` - Web interface and API endpoints
-
-### Memory Optimization
-
-The code uses several techniques to manage ESP32's limited memory:
-
-- Dynamic JSON documents with size limits
-- Paged API requests to avoid large payloads
-- String reuse and careful buffer management
-- Display hibernation during sleep
-
-## API Rate Limits
-
-GitHub API rate limits:
-
-- **5,000 requests/hour** for authenticated requests (REST API)
-- **5,000 points/hour** for GraphQL API (queries cost 1-50 points typically)
-
-This device makes:
-
-- **Notifications Screen**: 1 request per page per update (REST API)
-- **Profile Screen**: 1 GraphQL query per update (~5-10 points)
-- **Activity Screen**: 1 GraphQL query per update (~5-10 points)
-
-With default settings (10-minute intervals, 25 max pages):
-
-- Worst case: 25 REST + 2 GraphQL requests every 10 minutes = ~170 requests/hour
-- Well under the limit for typical usage
-
-## Security Considerations
-
-1. **Change default passwords** immediately
-2. Store GitHub tokens securely (they're in flash memory)
-3. Use HTTPS for all API requests (✓ implemented)
-4. Consider enabling WPA3 on your WiFi network
-5. Don't expose the web interface to the internet
+- **[Arduino MCP Server](https://github.com/niradler/arduino-mcp)** - Model Context Protocol server for Arduino CLI interactions, enabling AI-assisted development with seamless board detection, sketch compilation, and serial monitoring.
 
 ## Contributing
 
-This is an embedded device project. When modifying:
+Contributions are welcome! This project is open source and we appreciate:
 
-- Test memory usage thoroughly
-- Verify deep sleep functionality
-- Check display refresh behavior
-- Monitor Serial output during changes
+- Bug reports and fixes
+- Feature suggestions and implementations
+- Documentation improvements
+- Hardware compatibility reports
+
+See `llm.md` for detailed development documentation.
 
 ## License
 
-MIT License - Feel free to modify and distribute
-
-## Acknowledgments
-
-- GxEPD2 library for e-paper display support
-- ArduinoJson for efficient JSON parsing
-- ESP32 Arduino framework
-- GitHub REST API v3
-- GitHub GraphQL API v4
-
----
-
-**Version**: 2.0  
-**Last Updated**: November 2025
-
-## Changelog
-
-### Version 2.0 (November 2025)
-
-- ✨ Added Profile screen with GitHub statistics
-- ✨ Added Activity screen with contribution metrics
-- ✨ Implemented screen cycling via button (GPIO 39)
-- ✨ Integrated GitHub GraphQL API for efficient data fetching
-- ✨ Added 4-second button debounce
-- ✨ Smart per-screen data updates (only updates active screen)
-- ✨ Optimized display refresh logic
-- 🐛 Fixed double-refresh bug on screen switch
-- 📝 Split code into multiple files for better maintainability
-
-### Version 1.0
-
-- Initial release with notification display
+MIT License - Feel free to use, modify, and distribute this project.
