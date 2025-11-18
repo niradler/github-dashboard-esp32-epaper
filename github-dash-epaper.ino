@@ -956,6 +956,52 @@ void updateAllProviders() {
   #endif
 }
 
+struct HttpResponse {
+  int code;
+  bool success;
+};
+
+HttpResponse makeHttpsRequest(WiFiClientSecure* client, const String& url, const String& authToken, DynamicJsonDocument* doc, const String& userAgent = "ESP32-NotificationHub") {
+  HttpResponse response = {0, false};
+  
+  HTTPClient* https = new HTTPClient();
+  if (!https) {
+    Serial.println("[HTTP] Failed to create HTTPClient");
+    return response;
+  }
+  
+  if (!https->begin(*client, url)) {
+    Serial.println("[HTTP] Connection failed");
+    delete https;
+    return response;
+  }
+  
+  https->addHeader("Authorization", "Bearer " + authToken);
+  https->addHeader("User-Agent", userAgent);
+  https->addHeader("Accept", "application/vnd.github+json");
+  https->setTimeout(HTTP_TIMEOUT_MS);
+  
+  response.code = https->GET();
+  
+  if (response.code == 200 && doc != nullptr) {
+    String payload = https->getString();
+    DeserializationError error = deserializeJson(*doc, payload);
+    payload = "";
+    
+    if (!error) {
+      response.success = true;
+    } else {
+      Serial.print("[HTTP] JSON parse error: ");
+      Serial.println(error.c_str());
+    }
+  }
+  
+  https->end();
+  delete https;
+  
+  return response;
+}
+
 void updateProvider(int idx) {
   Serial.print("[PROVIDER] Updating ");
   Serial.print(providers[idx].displayName);
@@ -991,25 +1037,14 @@ void updateGitHub(int idx) {
   client->setInsecure();
   
   if (providers[idx].username.length() == 0) {
-    HTTPClient https;
-    if (https.begin(*client, "https://api.github.com/user")) {
-      https.addHeader("Authorization", "Bearer " + providers[idx].apiToken);
-      https.addHeader("User-Agent", "ESP32-NotificationHub");
-      https.setTimeout(HTTP_TIMEOUT_MS);
-      
-      int httpCode = https.GET();
-      if (httpCode == 200) {
-        String payload = https.getString();
-        DynamicJsonDocument doc(1024);
-        DeserializationError error = deserializeJson(doc, payload);
-        if (!error && doc.containsKey("login")) {
-          providers[idx].username = doc["login"].as<String>();
-          Serial.print("[GITHUB] Username: ");
-          Serial.println(providers[idx].username);
-        }
-      }
-      https.end();
+    DynamicJsonDocument userDoc(1024);
+    HttpResponse userResp = makeHttpsRequest(client, "https://api.github.com/user", providers[idx].apiToken, &userDoc);
+    if (userResp.success && userDoc.containsKey("login")) {
+      providers[idx].username = userDoc["login"].as<String>();
+      Serial.print("[GITHUB] Username: ");
+      Serial.println(providers[idx].username);
     }
+    userDoc.clear();
   }
   
   int totalUnread = 0;
@@ -1019,83 +1054,32 @@ void updateGitHub(int idx) {
   int assignCount = 0;
   int otherCount = 0;
   int page = 1;
+  char urlBuffer[128];
   
   while (page <= GITHUB_MAX_PAGES) {
-    HTTPClient https;
-    
-    String url = "https://api.github.com/notifications?per_page=" + String(GITHUB_PER_PAGE) + "&page=" + String(page);
-    
-    if (!https.begin(*client, url)) {
-      Serial.println("[GITHUB] ✗ Connection failed");
-      providers[idx].lastError = "Connection failed";
-      delete client;
-      return;
-    }
-    
-    https.addHeader("Authorization", "Bearer " + providers[idx].apiToken);
-    https.addHeader("User-Agent", "ESP32-NotificationHub");
-    https.addHeader("Accept", "application/vnd.github+json");
-    https.setTimeout(HTTP_TIMEOUT_MS);
-    
-    int httpCode = https.GET();
-    
-    if (httpCode != 200) {
-      if (page == 1) {
-        Serial.print("[GITHUB] ✗ HTTP ");
-        Serial.println(httpCode);
-        if (httpCode == 401) providers[idx].lastError = "Invalid token";
-        else if (httpCode == 403) providers[idx].lastError = "Rate limited";
-        else if (httpCode <= 0) providers[idx].lastError = "Request failed";
-        else providers[idx].lastError = "HTTP error";
-      }
-      https.end();
-      break;
-    }
+    snprintf(urlBuffer, sizeof(urlBuffer), "https://api.github.com/notifications?per_page=%d&page=%d", GITHUB_PER_PAGE, page);
     
     Serial.print("[GITHUB] Page ");
     Serial.print(page);
-    Serial.print(" - Getting payload...");
+    Serial.print(" - Free heap: ");
+    Serial.print(ESP.getFreeHeap());
+    Serial.print(", Max alloc: ");
+    Serial.println(ESP.getMaxAllocHeap());
     
-    int contentLength = https.getSize();
-    int freeHeap = ESP.getFreeHeap();
-    int maxAlloc = ESP.getMaxAllocHeap();
-    
-    Serial.printf(" (Size: %d, Free: %d, MaxAlloc: %d)", contentLength, freeHeap, maxAlloc);
-    
-    if (contentLength > 0 && contentLength > maxAlloc) {
-      Serial.println();
-      Serial.printf("[GITHUB] ✗ Not enough contiguous memory (%d bytes needed, %d max block)\n", contentLength, maxAlloc);
-      https.end();
-      break;
-    }
-    
-    String payload = https.getString();
-    https.end();
-    
-    Serial.print(" Got ");
-    Serial.println(payload.length());
-    
-    if (payload.length() == 0) {
-      if (page == 1) {
-        Serial.println("[GITHUB] ✗ Empty response");
-        providers[idx].lastError = "Empty response";
-      }
-      break;
-    }
-    
-    Serial.print("[GITHUB] Parsing JSON...");
     DynamicJsonDocument doc(JSON_BUFFER_SIZE);
-    DeserializationError error = deserializeJson(doc, payload);
+    HttpResponse pageResp = makeHttpsRequest(client, String(urlBuffer), providers[idx].apiToken, &doc);
     
-    if (error) {
-      Serial.print(" FAILED: ");
-      Serial.println(error.c_str());
+    if (!pageResp.success) {
       if (page == 1) {
-        providers[idx].lastError = "Parse error";
+        Serial.print("[GITHUB] ✗ HTTP ");
+        Serial.println(pageResp.code);
+        if (pageResp.code == 401) providers[idx].lastError = "Invalid token";
+        else if (pageResp.code == 403) providers[idx].lastError = "Rate limited";
+        else if (pageResp.code <= 0) providers[idx].lastError = "Request failed";
+        else providers[idx].lastError = "HTTP error";
       }
+      doc.clear();
       break;
-    } else {
-      Serial.println(" OK");
     }
     
     if (!doc.is<JsonArray>()) {
@@ -1103,6 +1087,7 @@ void updateGitHub(int idx) {
         Serial.println("[GITHUB] ✗ Not an array");
         providers[idx].lastError = "Invalid response";
       }
+      doc.clear();
       break;
     }
     
@@ -1110,6 +1095,7 @@ void updateGitHub(int idx) {
     int pageCount = notifications.size();
     
     if (pageCount == 0) {
+      doc.clear();
       break;
     }
     
@@ -1120,12 +1106,12 @@ void updateGitHub(int idx) {
       if (!unreadVar.isNull() && unreadVar.as<bool>()) {
         totalUnread++;
         
-        String reason = notifications[i]["reason"].as<String>();
-        if (reason == "review_requested") {
+        const char* reason = notifications[i]["reason"];
+        if (strcmp(reason, "review_requested") == 0) {
           reviews++;
-        } else if (reason == "mention") {
+        } else if (strcmp(reason, "mention") == 0) {
           mentionCount++;
-        } else if (reason == "assign") {
+        } else if (strcmp(reason, "assign") == 0) {
           assignCount++;
         } else {
           otherCount++;
@@ -1142,12 +1128,18 @@ void updateGitHub(int idx) {
       break;
     }
     
+    doc.clear();
     page++;
     delay(200);
     yield();
   }
   
   delete client;
+  
+  Serial.print("[GITHUB] Final heap: ");
+  Serial.print(ESP.getFreeHeap());
+  Serial.print(" bytes, Max alloc: ");
+  Serial.println(ESP.getMaxAllocHeap());
   
   providers[idx].notificationCount = totalUnread;
   providers[idx].reviewRequests = reviews;
