@@ -51,11 +51,11 @@ struct NotificationProvider {
   String username;
 };
 
-struct ActivityData {
-  int todayCommits;
-  int weekContributions;
-  int currentStreak;
-  int totalContributions;
+struct PRData {
+  int openPRs;
+  int readyToMerge;
+  int awaitingReview;
+  int changesRequested;
   String lastError;
   unsigned long lastUpdate;
 };
@@ -66,7 +66,7 @@ enum ProviderType {
 };
 
 NotificationProvider providers[MAX_PROVIDERS];
-ActivityData githubActivity;
+PRData prData;
 
 #define BUTTON_REFRESH 0
 #define BUTTON_WAKEUP 39
@@ -92,7 +92,7 @@ const int COUNT_X = SCREEN_WIDTH - 25;
 enum ScreenType {
   SCREEN_NOTIFICATIONS,
   SCREEN_PROFILE,
-  SCREEN_ACTIVITY,
+  SCREEN_PR_OVERVIEW,
   MAX_SCREENS
 };
 
@@ -118,13 +118,13 @@ int lastDisplayedReviews = -1;
 int lastDisplayedMentions = -1;
 int lastDisplayedAssignments = -1;
 int lastDisplayedOther = -1;
-int lastDisplayedTodayCommits = -1;
-int lastDisplayedWeekContributions = -1;
-int lastDisplayedStreak = -1;
-int lastDisplayedTotalContributions = -1;
+int lastDisplayedOpenPRs = -1;
+int lastDisplayedReadyToMerge = -1;
+int lastDisplayedAwaitingReview = -1;
+int lastDisplayedChangesRequested = -1;
 int lastDisplayedPublicRepos = -1;
 int lastDisplayedTotalStars = -1;
-int lastDisplayedOpenPRs = -1;
+int lastDisplayedProfileOpenPRs = -1;
 int lastDisplayedFollowers = -1;
 
 class DisplayPrinter {
@@ -418,13 +418,14 @@ void loop() {
       lastScreenSwitchTime = currentTime;
       
       currentScreen = (currentScreen + 1) % MAX_SCREENS;
+      saveCurrentScreen();
       Serial.print("[BUTTON] Switched to screen: ");
       if (currentScreen == SCREEN_NOTIFICATIONS) {
         Serial.println("Notifications");
       } else if (currentScreen == SCREEN_PROFILE) {
         Serial.println("Profile");
       } else {
-        Serial.println("Activity");
+        Serial.println("PR Overview");
       }
       
       #ifdef ENABLE_DISPLAY

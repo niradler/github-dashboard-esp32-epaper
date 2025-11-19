@@ -86,6 +86,30 @@ const unsigned char icon_followers_16x16[] PROGMEM = {
   0x1f, 0xf8, 0x3f, 0xfc, 0x7f, 0xfe, 0x7f, 0xfe
 };
 
+const unsigned char icon_pr_open_16x16[] PROGMEM = {
+  0x7f, 0xfe, 0x60, 0x06, 0x60, 0x06, 0x60, 0x06, 0x60, 0x06, 0x60, 0x06,
+  0x60, 0x06, 0x7f, 0xfe, 0x03, 0xc0, 0x03, 0xc0, 0x03, 0xc0, 0x03, 0xc0,
+  0x07, 0xe0, 0x0f, 0xf0, 0x1f, 0xf8, 0x1f, 0xf8
+};
+
+const unsigned char icon_pr_ready_16x16[] PROGMEM = {
+  0x00, 0x00, 0x00, 0x02, 0x00, 0x06, 0x00, 0x0e, 0x00, 0x1c, 0x00, 0x38,
+  0x40, 0x70, 0x60, 0xe0, 0x71, 0xc0, 0x7b, 0x80, 0x3f, 0x00, 0x1e, 0x00,
+  0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+const unsigned char icon_pr_review_16x16[] PROGMEM = {
+  0x07, 0xe0, 0x18, 0x18, 0x20, 0x04, 0x40, 0x02, 0x40, 0x02, 0x80, 0x01,
+  0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x80, 0x01, 0x40, 0x02, 0x40, 0x02,
+  0x20, 0x04, 0x18, 0x18, 0x07, 0xe0, 0x00, 0x00
+};
+
+const unsigned char icon_pr_changes_16x16[] PROGMEM = {
+  0x01, 0x80, 0x03, 0xc0, 0x07, 0xe0, 0x0f, 0xf0, 0x1f, 0xf8, 0x3f, 0xfc,
+  0x7f, 0xfe, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xfe, 0x3f, 0xfc, 0x1f, 0xf8,
+  0x0f, 0xf0, 0x07, 0xe0, 0x03, 0xc0, 0x01, 0x80
+};
+
 struct ProfileData {
   int publicRepos;
   int totalStars;
@@ -282,20 +306,20 @@ bool shouldUpdateDisplay() {
     
     if (repos != lastDisplayedPublicRepos ||
         stars != lastDisplayedTotalStars ||
-        prs != lastDisplayedOpenPRs ||
+        prs != lastDisplayedProfileOpenPRs ||
         followers != lastDisplayedFollowers) {
       return true;
     }
-  } else if (currentScreen == SCREEN_ACTIVITY) {
-    int todayCommits = githubActivity.todayCommits;
-    int weekContribs = githubActivity.weekContributions;
-    int streak = githubActivity.currentStreak;
-    int total = githubActivity.totalContributions;
+  } else if (currentScreen == SCREEN_PR_OVERVIEW) {
+    int openPRs = prData.openPRs;
+    int ready = prData.readyToMerge;
+    int awaiting = prData.awaitingReview;
+    int changes = prData.changesRequested;
     
-    if (todayCommits != lastDisplayedTodayCommits ||
-        weekContribs != lastDisplayedWeekContributions ||
-        streak != lastDisplayedStreak ||
-        total != lastDisplayedTotalContributions) {
+    if (openPRs != lastDisplayedOpenPRs ||
+        ready != lastDisplayedReadyToMerge ||
+        awaiting != lastDisplayedAwaitingReview ||
+        changes != lastDisplayedChangesRequested) {
       return true;
     }
   }
@@ -383,14 +407,14 @@ void updateDisplay(bool forceUpdate) {
     drawProfileScreen();
     lastDisplayedPublicRepos = profileData.publicRepos;
     lastDisplayedTotalStars = profileData.totalStars;
-    lastDisplayedOpenPRs = profileData.openPRs;
+    lastDisplayedProfileOpenPRs = profileData.openPRs;
     lastDisplayedFollowers = profileData.followers;
-  } else if (currentScreen == SCREEN_ACTIVITY) {
-    drawActivityScreen();
-    lastDisplayedTodayCommits = githubActivity.todayCommits;
-    lastDisplayedWeekContributions = githubActivity.weekContributions;
-    lastDisplayedStreak = githubActivity.currentStreak;
-    lastDisplayedTotalContributions = githubActivity.totalContributions;
+  } else if (currentScreen == SCREEN_PR_OVERVIEW) {
+    drawPROverviewScreen();
+    lastDisplayedOpenPRs = prData.openPRs;
+    lastDisplayedReadyToMerge = prData.readyToMerge;
+    lastDisplayedAwaitingReview = prData.awaitingReview;
+    lastDisplayedChangesRequested = prData.changesRequested;
   }
 }
 
@@ -509,7 +533,7 @@ void drawProfileScreen() {
   } while (display.nextPage());
 }
 
-void drawActivityScreen() {
+void drawPROverviewScreen() {
   display.setFullWindow();
   display.firstPage();
   
@@ -518,10 +542,10 @@ void drawActivityScreen() {
     display.setTextColor(GxEPD_BLACK);
     
     if (wifiConnected) {
-      int todayCommits = githubActivity.todayCommits;
-      int weekTotal = githubActivity.weekContributions;
-      int streak = githubActivity.currentStreak;
-      int total30d = githubActivity.totalContributions;
+      int openPRs = prData.openPRs;
+      int ready = prData.readyToMerge;
+      int awaiting = prData.awaitingReview;
+      int changes = prData.changesRequested;
       
       for (int y = 0; y < LOGO_SIZE; y++) {
         for (int x = 0; x < LOGO_SIZE; x++) {
@@ -539,17 +563,17 @@ void drawActivityScreen() {
       printer.setFont(u8g2_font_helvB10_tf);
       printer.setLineHeight(LINE_HEIGHT);
       
-      printer.print("GitHub Activity");
+      printer.print("PR Overview");
       
       const int col1X = 5;
       const int col2X = 125;
       const int row1Y = LIST_START_Y;
       const int row2Y = LIST_START_Y + 22;
       
-      drawCategoryCell(printer, icon_commits_16x16, "Today", todayCommits, col1X, row1Y);
-      drawCategoryCell(printer, icon_week_16x16, "Week", weekTotal, col2X, row1Y);
-      drawCategoryCell(printer, icon_streak_16x16, "Streak", streak, col1X, row2Y);
-      drawCategoryCell(printer, icon_total_16x16, "30 Days", total30d, col2X, row2Y);
+      drawCategoryCell(printer, icon_pr_open_16x16, "Open", openPRs, col1X, row1Y);
+      drawCategoryCell(printer, icon_pr_ready_16x16, "Ready", ready, col2X, row1Y);
+      drawCategoryCell(printer, icon_pr_review_16x16, "Review", awaiting, col1X, row2Y);
+      drawCategoryCell(printer, icon_pr_changes_16x16, "Changes", changes, col2X, row2Y);
       
       drawFooter(printer);
       

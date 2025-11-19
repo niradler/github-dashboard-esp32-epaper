@@ -30,11 +30,11 @@ void updateAllProviders() {
       updateGitHubProfile(GITHUB);
     }
     Serial.println("[UPDATE] Profile data updated");
-  } else if (currentScreen == SCREEN_ACTIVITY) {
+  } else if (currentScreen == SCREEN_PR_OVERVIEW) {
     if (providers[GITHUB].enabled && providers[GITHUB].apiToken.length() > 0) {
-      updateGitHubActivity(GITHUB);
+      updateGitHubPRs(GITHUB);
     }
-    Serial.println("[UPDATE] Activity data updated");
+    Serial.println("[UPDATE] PR data updated");
   }
   
   time(&lastUpdateTimestamp);
@@ -255,52 +255,35 @@ void updateGitHub(int idx) {
   Serial.println(otherCount);
 }
 
-void updateGitHubActivity(int idx) {
-  Serial.println("[GITHUB ACTIVITY] Fetching contribution data...");
+void updateGitHubPRs(int idx) {
+  Serial.println("[GITHUB PRs] Fetching PR data...");
   
   WiFiClientSecure *client = new WiFiClientSecure;
   if (!client) {
-    Serial.println("[GITHUB ACTIVITY] ✗ Out of memory");
-    githubActivity.lastError = "Out of memory";
+    Serial.println("[GITHUB PRs] ✗ Out of memory");
+    prData.lastError = "Out of memory";
     return;
   }
   client->setInsecure();
   
   if (providers[idx].username.length() == 0) {
-    Serial.println("[GITHUB ACTIVITY] ✗ No username available");
-    githubActivity.lastError = "No username";
+    Serial.println("[GITHUB PRs] ✗ No username available");
+    prData.lastError = "No username";
     delete client;
     return;
   }
   
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    Serial.println("[GITHUB ACTIVITY] ✗ Failed to get time");
-    githubActivity.lastError = "No time";
-    delete client;
-    return;
-  }
-  
-  char todayStr[11];
-  char fromDateStr[11];
-  strftime(todayStr, sizeof(todayStr), "%Y-%m-%d", &timeinfo);
-  
-  time_t now = time(nullptr);
-  time_t weekAgo = now - (7 * 24 * 60 * 60);
-  localtime_r(&weekAgo, &timeinfo);
-  strftime(fromDateStr, sizeof(fromDateStr), "%Y-%m-%d", &timeinfo);
-  
-  String query = "{\"query\":\"query{user(login:\\\"" + providers[idx].username + "\\\"){contributionsCollection(from:\\\"" + String(fromDateStr) + "T00:00:00Z\\\",to:\\\"" + String(todayStr) + "T23:59:59Z\\\"){contributionCalendar{totalContributions weeks{contributionDays{contributionCount date}}}}}}}\"}";
+  String query = "{\"query\":\"query{search(query:\\\"author:" + providers[idx].username + " is:pr is:open\\\",type:ISSUE,first:100){nodes{...on PullRequest{mergeable reviewDecision}}}}\"}";
   
   HTTPClient *https = new HTTPClient();
   if (!https) {
-    Serial.println("[GITHUB ACTIVITY] ✗ Failed to create HTTPClient");
+    Serial.println("[GITHUB PRs] ✗ Failed to create HTTPClient");
     delete client;
     return;
   }
   
   if (!https->begin(*client, "https://api.github.com/graphql")) {
-    Serial.println("[GITHUB ACTIVITY] ✗ Connection failed");
+    Serial.println("[GITHUB PRs] ✗ Connection failed");
     delete https;
     delete client;
     return;
@@ -315,72 +298,59 @@ void updateGitHubActivity(int idx) {
   
   if (httpCode == 200) {
     String payload = https->getString();
-    DynamicJsonDocument doc(4096);
+    DynamicJsonDocument doc(8192);
     DeserializationError error = deserializeJson(doc, payload);
     
     if (!error) {
-      JsonObject data = doc["data"]["user"]["contributionsCollection"];
-      int weekTotal = data["contributionCalendar"]["totalContributions"] | 0;
+      JsonArray prs = doc["data"]["search"]["nodes"].as<JsonArray>();
       
-      int todayCommits = 0;
-      int currentStreak = 0;
-      int totalContribs = 0;
+      int openCount = 0;
+      int readyCount = 0;
+      int awaitingCount = 0;
+      int changesCount = 0;
       
-      JsonArray weeks = data["contributionCalendar"]["weeks"].as<JsonArray>();
-      if (!weeks.isNull()) {
-        bool streakActive = true;
-        int daysChecked = 0;
-        
-        for (int w = weeks.size() - 1; w >= 0 && daysChecked < 30; w--) {
-          JsonArray days = weeks[w]["contributionDays"].as<JsonArray>();
-          for (int d = days.size() - 1; d >= 0 && daysChecked < 30; d--) {
-            String date = days[d]["date"].as<String>();
-            int count = days[d]["contributionCount"] | 0;
-            
-            if (date == String(todayStr)) {
-              todayCommits = count;
-            }
-            
-            totalContribs += count;
-            
-            if (daysChecked == 0 || streakActive) {
-              if (count > 0) {
-                currentStreak++;
-              } else if (daysChecked > 0) {
-                streakActive = false;
-              }
-            }
-            
-            daysChecked++;
+      if (!prs.isNull()) {
+        for (JsonObject pr : prs) {
+          openCount++;
+          
+          String mergeable = pr["mergeable"].as<String>();
+          String reviewDecision = pr["reviewDecision"].as<String>();
+          
+          if (mergeable == "MERGEABLE") {
+            readyCount++;
+          } else if (reviewDecision == "CHANGES_REQUESTED") {
+            changesCount++;
+          } else if (reviewDecision.isEmpty() || reviewDecision == "null") {
+            awaitingCount++;
           }
         }
       }
       
-      githubActivity.todayCommits = todayCommits;
-      githubActivity.weekContributions = weekTotal;
-      githubActivity.currentStreak = currentStreak;
-      githubActivity.totalContributions = totalContribs;
-      githubActivity.lastUpdate = millis();
-      githubActivity.lastError = "";
+      prData.openPRs = openCount;
+      prData.readyToMerge = readyCount;
+      prData.awaitingReview = awaitingCount;
+      prData.changesRequested = changesCount;
+      prData.lastUpdate = millis();
+      prData.lastError = "";
       
-      Serial.print("[GITHUB ACTIVITY] ✓ Today: ");
-      Serial.print(todayCommits);
-      Serial.print(", Week: ");
-      Serial.print(weekTotal);
-      Serial.print(", Streak: ");
-      Serial.print(currentStreak);
-      Serial.print("d, Total (30d): ");
-      Serial.println(totalContribs);
+      Serial.print("[GITHUB PRs] ✓ Open: ");
+      Serial.print(openCount);
+      Serial.print(", Ready: ");
+      Serial.print(readyCount);
+      Serial.print(", Awaiting: ");
+      Serial.print(awaitingCount);
+      Serial.print(", Changes: ");
+      Serial.println(changesCount);
       
     } else {
-      Serial.print("[GITHUB ACTIVITY] ✗ JSON parse error: ");
+      Serial.print("[GITHUB PRs] ✗ JSON parse error: ");
       Serial.println(error.c_str());
-      githubActivity.lastError = "Parse error";
+      prData.lastError = "Parse error";
     }
   } else {
-    Serial.print("[GITHUB ACTIVITY] ✗ HTTP ");
+    Serial.print("[GITHUB PRs] ✗ HTTP ");
     Serial.println(httpCode);
-    githubActivity.lastError = "HTTP error";
+    prData.lastError = "HTTP error";
   }
   
   https->end();

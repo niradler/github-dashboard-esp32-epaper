@@ -23,6 +23,7 @@ void loadConfig() {
   config.admin_password = preferences.getString("admin_pass", "admin");
   config.update_interval = preferences.getInt("update_int", 10);
   config.configured = preferences.getBool("configured", false);
+  currentScreen = preferences.getInt("current_screen", SCREEN_NOTIFICATIONS);
   preferences.end();
   
   Serial.println("[CONFIG] Configuration loaded:");
@@ -31,6 +32,10 @@ void loadConfig() {
   Serial.println("  Admin Password: " + String(config.admin_password.length() > 0 ? "***SET***" : "***NOT SET***"));
   Serial.println("  Update Interval: " + String(config.update_interval) + " minutes");
   Serial.println("  Configured: " + String(config.configured ? "YES" : "NO"));
+  Serial.print("  Current Screen: ");
+  if (currentScreen == SCREEN_NOTIFICATIONS) Serial.println("Notifications");
+  else if (currentScreen == SCREEN_PROFILE) Serial.println("Profile");
+  else Serial.println("PR Overview");
 }
 
 void saveConfig() {
@@ -82,5 +87,15 @@ void saveProviderSettings() {
   }
   preferences.end();
   Serial.println("[PROVIDERS] Saved " + String(enabledCount) + " enabled provider(s)");
+}
+
+void saveCurrentScreen() {
+  preferences.begin("config", false);
+  preferences.putInt("current_screen", currentScreen);
+  preferences.end();
+  Serial.print("[CONFIG] Current screen saved: ");
+  if (currentScreen == SCREEN_NOTIFICATIONS) Serial.println("Notifications");
+  else if (currentScreen == SCREEN_PROFILE) Serial.println("Profile");
+  else Serial.println("PR Overview");
 }
 
