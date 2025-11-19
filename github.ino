@@ -267,10 +267,19 @@ void updateGitHubPRs(int idx) {
   client->setInsecure();
   
   if (providers[idx].username.length() == 0) {
-    Serial.println("[GITHUB PRs] ✗ No username available");
-    prData.lastError = "No username";
-    delete client;
-    return;
+    DynamicJsonDocument userDoc(1024);
+    HttpResponse userResp = makeHttpsRequest(client, "https://api.github.com/user", providers[idx].apiToken, &userDoc);
+    if (userResp.success && userDoc.containsKey("login")) {
+      providers[idx].username = userDoc["login"].as<String>();
+      Serial.print("[GITHUB PRs] Username: ");
+      Serial.println(providers[idx].username);
+    } else {
+      Serial.println("[GITHUB PRs] ✗ Failed to fetch username");
+      prData.lastError = "No username";
+      delete client;
+      return;
+    }
+    userDoc.clear();
   }
   
   String query = "{\"query\":\"query{search(query:\\\"author:" + providers[idx].username + " is:pr is:open\\\",type:ISSUE,first:100){nodes{...on PullRequest{mergeable reviewDecision}}}}\"}";
