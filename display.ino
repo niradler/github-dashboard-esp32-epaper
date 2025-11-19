@@ -202,6 +202,18 @@ String getTimeAgo(time_t timestamp) {
   return String(diff / 86400) + "d ago";
 }
 
+float getBatteryVoltage() {
+  int raw = analogRead(BATTERY_ADC);
+  return (raw / 4095.0) * 2.0 * 3.3;
+}
+
+int getBatteryPercentage() {
+  float voltage = getBatteryVoltage();
+  if (voltage >= 4.2) return 100;
+  if (voltage <= 3.3) return 0;
+  return (int)((voltage - 3.3) / (4.2 - 3.3) * 100);
+}
+
 void drawWiFiBars(int x, int y, int rssi) {
   int bars = 0;
   if (rssi >= -60) bars = 4;
@@ -218,6 +230,23 @@ void drawWiFiBars(int x, int y, int rssi) {
       display.fillRect(barX, barY, 2, barHeight, GxEPD_BLACK);
     } else {
       display.drawRect(barX, barY, 2, barHeight, GxEPD_BLACK);
+    }
+  }
+}
+
+void drawBatteryBars(int x, int y, int percentage) {
+  int bars = 0;
+  if (percentage >= 75) bars = 4;
+  else if (percentage >= 50) bars = 3;
+  else if (percentage >= 25) bars = 2;
+  else if (percentage >= 10) bars = 1;
+  
+  display.drawRect(x - 1, y - 8, 14, 9, GxEPD_BLACK);
+  display.fillRect(x + 13, y - 6, 2, 5, GxEPD_BLACK);
+  
+  for (int i = 0; i < 4; i++) {
+    if (i < bars) {
+      display.fillRect(x + (i * 3), y - 7, 2, 7, GxEPD_BLACK);
     }
   }
 }
@@ -251,8 +280,11 @@ void drawFooter(DisplayPrinter& printer) {
     printer.print("@" + username);
   }
   
-  printer.setCursorX(195);
+  printer.setCursorX(175);
   printer.print(getFormattedTime());
+  
+  int batteryPercent = getBatteryPercentage();
+  drawBatteryBars(SCREEN_WIDTH - 18, SCREEN_HEIGHT - 4, batteryPercent);
 }
 
 void drawCategoryCell(DisplayPrinter& printer, const unsigned char* icon, const char* label, int count, int xOffset, int y) {

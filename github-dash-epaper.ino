@@ -71,6 +71,7 @@ PRData prData;
 #define BUTTON_REFRESH 0
 #define BUTTON_WAKEUP 39
 #define LED_STATUS 2
+#define BATTERY_ADC 35
 
 #define SLEEP_ENABLED false
 #define WEB_SERVER_TIMEOUT 30000
@@ -303,7 +304,11 @@ void setup() {
   pinMode(LED_STATUS, OUTPUT);
   pinMode(BUTTON_REFRESH, INPUT_PULLUP);
   pinMode(BUTTON_WAKEUP, INPUT);
+  pinMode(BATTERY_ADC, INPUT);
   digitalWrite(LED_STATUS, LOW);
+  
+  analogReadResolution(12);
+  analogSetAttenuation(ADC_11db);
   
   #ifdef ENABLE_DISPLAY
   Serial.println("\n[DISPLAY] Initializing...");
@@ -327,6 +332,16 @@ void setup() {
   Serial.println("\n[TIME] Configuring NTP...");
   configTime(7200, 0, "pool.ntp.org");
   Serial.println("[TIME] NTP server: pool.ntp.org (GMT+2)");
+  
+  #ifdef ENABLE_DISPLAY
+  float battVoltage = getBatteryVoltage();
+  int battPercent = getBatteryPercentage();
+  Serial.print("\n[BATTERY] Voltage: ");
+  Serial.print(battVoltage, 2);
+  Serial.print("V, Level: ");
+  Serial.print(battPercent);
+  Serial.println("%");
+  #endif
   
   Serial.println("\n=====================================");
   Serial.println("[SYSTEM] ✓ Setup complete!");
@@ -455,6 +470,17 @@ void loop() {
       }
       updateAllProviders();
       lastUpdateTime = currentTime;
+      
+      #ifdef ENABLE_DISPLAY
+      float battVoltage = getBatteryVoltage();
+      int battPercent = getBatteryPercentage();
+      Serial.print("[BATTERY] Voltage: ");
+      Serial.print(battVoltage, 2);
+      Serial.print("V, Level: ");
+      Serial.print(battPercent);
+      Serial.println("%");
+      #endif
+      
       unsigned long nextUpdate = (interval - (millis() - lastUpdateTime)) / 1000;
       Serial.println("[TIMER] Next update in " + String(nextUpdate / 60) + " minutes");
     }
