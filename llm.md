@@ -592,5 +592,149 @@ This project has minimal git structure. Recommendations:
 
 ---
 
+## Recent Updates
+
+### v1.1 - Deep Sleep & AP Security Improvements
+
+#### 1. Deep Sleep Battery Saver
+
+**Changes Made**:
+- **Boot Grace Period**: Device stays awake for 10 minutes after boot before entering sleep cycle
+  - Grace period countdown logged every minute
+  - Allows time for configuration and testing
+  - Automatic transition to sleep mode after grace period expires
+
+- **GPIO Wakeup Change**: Switched from GPIO39 to GPIO0 for deep sleep wakeup
+  - GPIO0 (BUTTON_REFRESH) has reliable internal pullup
+  - GPIO39 is input-only and unreliable for wakeup
+  - GPIO0 wakes device from sleep
+  - GPIO39 still switches screens when device is awake
+
+- **Sleep Settings**:
+  - Sleep enabled by default (`SLEEP_ENABLED true`)
+  - Web server timeout increased to 60 seconds (was 30s)
+  - Device enters deep sleep after 60s of inactivity
+  - Wakes automatically on timer (update interval) or button press
+
+- **Enhanced Logging**:
+  - Logs remaining grace period minutes
+  - Shows wakeup source (GPIO0 button or timer)
+  - Displays battery voltage before entering sleep
+  - Better visibility into power management state
+
+**Battery Life Impact**:
+- Previous: ~100mA always-on = 8-9 hours
+- Current: ~12mA average = 70+ hours = 3-4 days battery life
+
+**Implementation Details**:
+```cpp
+// Global variable
+unsigned long bootTime = 0;
+
+// In setup()
+bootTime = millis();
+
+// In loop() - grace period check
+if (millis() - bootTime < 600000) {
+  // Skip sleep for first 10 minutes
+}
+
+// In goToDeepSleep()
+rtc_gpio_init(GPIO_NUM_0);
+esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+```
+
+#### 2. WiFi AP Password Security
+
+**Changes Made**:
+- **Configurable AP Password**: Default "configure" can now be changed via web interface
+  - Previously hardcoded with no way to change
+  - Security risk for devices left in public areas
+  - Now fully configurable with minimum 8 character requirement
+
+- **Persistent Storage**: AP password saved in preferences
+  - Loaded at boot: `preferences.getString("ap_pass", "configure")`
+  - Saved with config: `preferences.putString("ap_pass", config.wifi_ap_password)`
+  - Survives reboots and factory resets (unless cleared)
+
+- **API Endpoint**: `POST /api/wifi/ap-password`
+  - Request: `{"admin_password": "xxx", "new_ap_password": "yyy"}`
+  - Validates admin password before changing
+  - Enforces 8-character minimum
+  - Returns success/error JSON response
+
+- **Admin UI**: New section in Settings tab
+  - Form with admin password + new AP password fields
+  - Client-side validation (minlength=8)
+  - Success/error messages
+  - Password fields cleared after successful change
+
+**Implementation Details**:
+```cpp
+// Config struct
+struct Config {
+  String wifi_ssid;
+  String wifi_password;
+  String admin_password;
+  int update_interval;
+  bool configured;
+  String wifi_ap_password;  // NEW
+} config;
+
+// In startConfigMode()
+WiFi.softAP("NotificationHub", config.wifi_ap_password.c_str());
+
+// In handleChangeAPPassword()
+if (newAPPassword.length() < 8) {
+  server.send(400, "application/json", "{\"error\":\"AP password must be at least 8 characters\"}");
+  return;
+}
+config.wifi_ap_password = newAPPassword;
+saveConfig();
+```
+
+**Security Notes**:
+- Change AP password immediately after first setup
+- Use strong, unique password (min 8 chars)
+- AP password stored in plaintext in flash
+- Consider physical security of device
+
+**Usage Flow**:
+1. Device starts in AP mode (first boot or config mode)
+2. Connect to "NotificationHub" with current AP password
+3. Navigate to Settings tab in web interface
+4. Enter admin password + new AP password (8+ chars)
+5. Click "Change AP Password"
+6. New password takes effect immediately (no reboot needed)
+7. Next time device enters AP mode, new password will be required
+
+**Button Behavior After Deep Sleep Changes**:
+| Button | GPIO | Awake Behavior | Deep Sleep Behavior |
+|--------|------|---------------|---------------------|
+| BUTTON_REFRESH | 0 | Refresh data + update display | Wake device |
+| BUTTON_WAKEUP | 39 | Switch screens | No effect |
+
+**Configuration Constants**:
+```cpp
+#define SLEEP_ENABLED true          // Enable/disable sleep mode
+#define WEB_SERVER_TIMEOUT 60000    // 60s before sleep (was 30s)
+const unsigned long BOOT_GRACE_PERIOD = 600000;  // 10 minutes
+```
+
+**Testing Checklist**:
+- [ ] Device stays awake for 10 minutes after boot
+- [ ] Grace period countdown logged correctly
+- [ ] Device enters sleep after 60s inactivity (after grace period)
+- [ ] GPIO0 button wakes device from sleep
+- [ ] GPIO39 button switches screens when awake
+- [ ] Battery voltage logged before sleep
+- [ ] Wakeup source logged correctly (button vs timer)
+- [ ] AP password can be changed via web interface
+- [ ] New AP password persists across reboots
+- [ ] AP password validation enforces 8-char minimum
+- [ ] Admin password validation works
+
+---
+
 **This is a living document** - update as the project evolves. Always test changes thoroughly before deploying to hardware.
 

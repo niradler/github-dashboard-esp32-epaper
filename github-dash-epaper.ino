@@ -33,6 +33,7 @@ struct Config {
   String admin_password;
   int update_interval;
   bool configured;
+  String wifi_ap_password;
 } config;
 
 struct NotificationProvider {
@@ -73,8 +74,9 @@ PRData prData;
 #define LED_STATUS 2
 #define BATTERY_ADC 35
 
-#define SLEEP_ENABLED false
-#define WEB_SERVER_TIMEOUT 30000
+#define SLEEP_ENABLED true
+#define WEB_SERVER_TIMEOUT 60000
+#define BOOT_GRACE_PERIOD 600000
 
 #ifdef ENABLE_DISPLAY
 const int SCREEN_WIDTH = 250;
@@ -103,6 +105,7 @@ unsigned long lastUpdateTime = 0;
 time_t lastUpdateTimestamp = 0;
 bool wifiConnected = false;
 unsigned long wakeupTime = 0;
+unsigned long bootTime = 0;
 bool allowDeepSleep = false;
 int totalNotifications = 0;
 int activeProviders = 0;
@@ -355,9 +358,12 @@ void setup() {
   }
   Serial.println("=====================================\n");
   
+  bootTime = millis();
   wakeupTime = millis();
   checkWakeupReason();
   allowDeepSleep = wifiConnected && !isConfigMode;
+  
+  Serial.println("[POWER] Boot grace period: 10 minutes (deep sleep disabled)");
 }
 
 void goToDeepSleep() {
@@ -367,14 +373,21 @@ void goToDeepSleep() {
   
   Serial.println("\n[POWER] Preparing for deep sleep...");
   Serial.println("[POWER] Sleep duration: " + String(sleepTime / 60) + " minutes");
-  Serial.println("[POWER] Wake on: Timer OR Button (GPIO " + String(BUTTON_WAKEUP) + ")");
+  Serial.println("[POWER] Wake on: Timer OR Button (GPIO0)");
   
   #ifdef ENABLE_DISPLAY
+  float battVoltage = getBatteryVoltage();
+  int battPercent = getBatteryPercentage();
+  Serial.print("[POWER] Battery before sleep: ");
+  Serial.print(battVoltage, 2);
+  Serial.print("V (");
+  Serial.print(battPercent);
+  Serial.println("%)");
   display.hibernate();
   #endif
   
   esp_sleep_enable_timer_wakeup(sleepTime * 1000000ULL);
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_WAKEUP, 0);
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
   
   Serial.println("[POWER] Going to sleep now...");
   Serial.flush();
@@ -387,7 +400,7 @@ void checkWakeupReason() {
   
   switch(wakeup_reason) {
     case ESP_SLEEP_WAKEUP_EXT0:
-      Serial.println("[WAKE] Woke up by button press on GPIO " + String(BUTTON_WAKEUP));
+      Serial.println("[WAKE] Woke up by button press on GPIO0 (BUTTON_REFRESH)");
       digitalWrite(LED_STATUS, HIGH);
       delay(100);
       digitalWrite(LED_STATUS, LOW);
@@ -395,7 +408,7 @@ void checkWakeupReason() {
       digitalWrite(LED_STATUS, HIGH);
       break;
     case ESP_SLEEP_WAKEUP_TIMER:
-      Serial.println("[WAKE] Woke up by timer");
+      Serial.println("[WAKE] Woke up by timer (scheduled update)");
       break;
     default:
       Serial.println("[WAKE] Cold boot - not from deep sleep");
@@ -485,7 +498,16 @@ void loop() {
       Serial.println("[TIMER] Next update in " + String(nextUpdate / 60) + " minutes");
     }
     
-    if (allowDeepSleep && SLEEP_ENABLED) {
+    if (millis() - bootTime < BOOT_GRACE_PERIOD) {
+      unsigned long remainingGrace = (BOOT_GRACE_PERIOD - (millis() - bootTime)) / 60000;
+      if (remainingGrace > 0) {
+        static unsigned long lastGraceLog = 0;
+        if (millis() - lastGraceLog > 60000) {
+          Serial.println("[POWER] Grace period: " + String(remainingGrace) + " minute(s) remaining before sleep enabled");
+          lastGraceLog = millis();
+        }
+      }
+    } else if (allowDeepSleep && SLEEP_ENABLED) {
       unsigned long awakeTime = millis() - wakeupTime;
       if (awakeTime > WEB_SERVER_TIMEOUT) {
         goToDeepSleep();
@@ -541,10 +563,12 @@ void startConfigMode() {
   Serial.println("\n[AP MODE] Starting config mode...");
   
   WiFi.mode(WIFI_AP);
-  bool apStarted = WiFi.softAP("NotificationHub", "configure");
+  bool apStarted = WiFi.softAP("NotificationHub", config.wifi_ap_password.c_str());
   
   if (apStarted) {
     Serial.println("[AP MODE] ✓ AP started");
+    Serial.println("[AP MODE] SSID: NotificationHub");
+    Serial.println("[AP MODE] Password: " + String(config.wifi_ap_password.length() > 0 ? "***SET***" : "***NOT SET***"));
     Serial.println("[AP MODE] IP: " + WiFi.softAPIP().toString());
     #ifdef ENABLE_DISPLAY
     showConfigMode();

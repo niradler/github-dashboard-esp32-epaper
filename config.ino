@@ -23,6 +23,7 @@ void loadConfig() {
   config.admin_password = preferences.getString("admin_pass", "admin");
   config.update_interval = preferences.getInt("update_int", 10);
   config.configured = preferences.getBool("configured", false);
+  config.wifi_ap_password = preferences.getString("ap_pass", "configure");
   currentScreen = preferences.getInt("current_screen", SCREEN_NOTIFICATIONS);
   preferences.end();
   
@@ -30,6 +31,7 @@ void loadConfig() {
   Serial.println("  WiFi SSID: " + config.wifi_ssid);
   Serial.println("  WiFi Password: " + String(config.wifi_password.length() > 0 ? "***SET***" : "***NOT SET***"));
   Serial.println("  Admin Password: " + String(config.admin_password.length() > 0 ? "***SET***" : "***NOT SET***"));
+  Serial.println("  AP Password: " + String(config.wifi_ap_password.length() > 0 ? "***SET***" : "***NOT SET***"));
   Serial.println("  Update Interval: " + String(config.update_interval) + " minutes");
   Serial.println("  Configured: " + String(config.configured ? "YES" : "NO"));
   Serial.print("  Current Screen: ");
@@ -46,10 +48,12 @@ void saveConfig() {
   preferences.putString("admin_pass", config.admin_password);
   preferences.putInt("update_int", config.update_interval);
   preferences.putBool("configured", config.configured);
+  preferences.putString("ap_pass", config.wifi_ap_password);
   preferences.end();
   Serial.println("[CONFIG] Configuration saved successfully!");
   Serial.println("  WiFi SSID: " + config.wifi_ssid);
   Serial.println("  Update Interval: " + String(config.update_interval) + " minutes");
+  Serial.println("  AP Password: " + String(config.wifi_ap_password.length() > 0 ? "***SET***" : "***NOT SET***"));
 }
 
 void loadProviderSettings() {
