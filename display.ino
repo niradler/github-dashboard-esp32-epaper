@@ -110,15 +110,6 @@ const unsigned char icon_pr_changes_16x16[] PROGMEM = {
   0x0f, 0xf0, 0x07, 0xe0, 0x03, 0xc0, 0x01, 0x80
 };
 
-struct ProfileData {
-  int publicRepos;
-  int totalStars;
-  int openPRs;
-  int followers;
-};
-
-ProfileData profileData = {0, 0, 0, 0};
-
 void initDisplay() {
   Serial.println("[DISPLAY] Init e-paper...");
   display.init(115200);

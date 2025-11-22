@@ -34,18 +34,18 @@ void handleRoot() {
 void handleStatus() {
   Serial.println("[WEB] Request: GET /api/status");
   
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc;
   doc["wifiConnected"] = wifiConnected;
   doc["ssid"] = config.wifi_ssid;
   doc["ip"] = WiFi.localIP().toString();
   doc["updateInterval"] = config.update_interval;
   
-  JsonArray providersArray = doc.createNestedArray("providers");
+  JsonArray providersArray = doc["providers"].to<JsonArray>();
   int total = 0;
   
   for (int i = 0; i < MAX_PROVIDERS; i++) {
     if (providers[i].enabled) {
-      JsonObject p = providersArray.createNestedObject();
+      JsonObject p = providersArray.add<JsonObject>();
       p["name"] = providers[i].name;
       p["displayName"] = providers[i].displayName;
       p["count"] = providers[i].notificationCount;
@@ -102,11 +102,11 @@ void handleSaveConfig() {
 void handleGetProviders() {
   Serial.println("[WEB] Request: GET /api/providers");
   
-  DynamicJsonDocument doc(2048);
-  JsonArray providersArray = doc.createNestedArray("providers");
+  JsonDocument doc;
+  JsonArray providersArray = doc["providers"].to<JsonArray>();
   
   for (int i = 0; i < MAX_PROVIDERS; i++) {
-    JsonObject p = providersArray.createNestedObject();
+    JsonObject p = providersArray.add<JsonObject>();
     p["id"] = i;
     p["name"] = providers[i].name;
     p["displayName"] = providers[i].displayName;
@@ -124,7 +124,7 @@ void handleGetProviders() {
 void handleSaveProviders() {
   Serial.println("[WEB] Request: POST /api/providers");
   
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc;
   DeserializationError error = deserializeJson(doc, server.arg("plain"));
   
   if (error) {
@@ -153,7 +153,7 @@ void handleSaveProviders() {
       Serial.print(providers[id].displayName);
       Serial.println(providers[id].enabled ? ": ENABLED" : ": DISABLED");
       
-      if (p.containsKey("apiToken")) {
+      if (p["apiToken"].is<const char*>()) {
         String token = p["apiToken"].as<String>();
         if (token.length() > 0) {
           providers[id].apiToken = token;
@@ -210,7 +210,7 @@ void handleReset() {
 void handleChangeAPPassword() {
   Serial.println("[WEB] Request: POST /api/wifi/ap-password from " + server.client().remoteIP().toString());
   
-  DynamicJsonDocument doc(512);
+  JsonDocument doc;
   DeserializationError error = deserializeJson(doc, server.arg("plain"));
   
   if (error) {

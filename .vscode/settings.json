@@ -1,0 +1,37 @@
+{
+  "files.associations": {
+    "*.ino": "cpp",
+    "*.h": "cpp"
+  },
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.autocomplete": "disabled",
+  "C_Cpp.errorSquiggles": "disabled",
+  "clangd.onConfigChanged": "restart",
+  "clangd.path": "clangd",
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}",
+    "--background-index",
+    "--header-insertion=never",
+    "--completion-style=detailed"
+  ],
+  "[cpp]": {
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+  },
+  "arduino.useArduinoCli": true,
+  "arduino.path": "arduino-cli",
+  "arduino.commandPath": "arduino-cli",
+  "arduino.enableUSBDetection": true,
+  "arduino.disableTestingOpen": true,
+  "arduino.logLevel": "info",
+  "editor.quickSuggestions": {
+    "other": true,
+    "comments": false,
+    "strings": false
+  },
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/build": true,
+    "**/.arduino": true
+  }
+}

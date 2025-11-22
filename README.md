@@ -7,11 +7,11 @@ A smart notification dashboard for GitHub notifications running on ESP32 with an
 - **Multi-Screen Dashboard**: Three screens accessible via button press:
   - **Notifications**: Real-time unread GitHub notifications with category breakdown
   - **Profile**: GitHub profile statistics (repos, stars, open PRs, followers)
-  - **Activity**: Contribution metrics (today's commits, weekly total, streak, 30-day total)
+  - **PR Overview**: Your open pull requests with merge status, CI checks, and review state - quickly identify PRs ready to merge
 - **Smart Screen Cycling**: Button on GPIO 39 cycles through screens with 4-second debounce
 - **Efficient API Usage**:
   - REST API for notifications
-  - GraphQL API for profile and activity data (minimized payload size)
+  - GraphQL API for profile and PR overview (minimized payload size)
 - **Category Breakdown**: Organizes notifications by type:
   - Review Requests
   - Mentions
@@ -107,23 +107,24 @@ The device has three screens that you can cycle through by pressing the button o
   - 👥 Followers
 - Footer with WiFi SSID and connection status
 
-#### 3. Activity Screen
+#### 3. PR Overview Screen
 
-![Activity Screen](screenshots/activity.jpg)
+![PR Overview Screen](screenshots/activity.jpg)
 
 - GitHub logo
-- Activity title
-- Contribution metrics with icons:
-  - 📝 Today's Commits
-  - 📅 This Week's Contributions
-  - 🔥 Current Streak (days)
-  - 📊 30-Day Total Contributions
+- PR Overview title
+- Your open pull requests with:
+  - ✅ Mergeable status
+  - 🔄 CI/Check status
+  - 👀 Review state
+  - 📝 PR title and number
+- Helps quickly identify PRs ready to merge without opening GitHub
 - Footer with WiFi SSID and connection status
 
 ### Screen Cycling
 
 - Press the **button on GPIO 39** to cycle through screens:
-  - Notifications → Profile → Activity → (back to) Notifications
+  - Notifications → Profile → PR Overview → (back to) Notifications
 - Button has **4-second debounce** to prevent accidental double-presses
 - **Instant visual feedback**: Screen switches immediately, then fetches fresh data
 - Each screen only updates its data when active (saves API calls)
@@ -188,7 +189,7 @@ When enabled (default), the device:
 
 1. Wakes up every N minutes (configurable)
 2. Connects to WiFi
-3. Fetches data for current active screen (Notifications/Profile/Activity)
+3. Fetches data for current active screen (Notifications/Profile/PR Overview)
 4. Updates display if data changed
 5. Enters deep sleep
 

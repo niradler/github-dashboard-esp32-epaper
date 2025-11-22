@@ -1,0 +1,15 @@
+CompileFlags:
+  Add:
+    - -Wno-unknown-warning-option
+    - -Wno-unused-command-line-argument
+    - -ferror-limit=100
+  Remove:
+    - -mlongcalls
+    - -mlong-calls
+    - -mdisable-hardware-atomics
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+
+Diagnostics:
+  ClangTidy:
+    Remove: '*'

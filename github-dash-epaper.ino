@@ -6,7 +6,35 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
+#include "types.h"
+
 #define ENABLE_DISPLAY
+
+RTC_DATA_ATTR bool rtcValid = false;
+RTC_DATA_ATTR char rtcWifiSSID[64] = "";
+RTC_DATA_ATTR char rtcWifiPass[64] = "";
+RTC_DATA_ATTR uint8_t rtcWifiChannel = 0;
+RTC_DATA_ATTR uint8_t rtcWifiBSSID[6] = {0};
+RTC_DATA_ATTR int rtcCurrentScreen = 0;
+
+RTC_DATA_ATTR int rtcNotificationCount = 0;
+RTC_DATA_ATTR int rtcReviewRequests = 0;
+RTC_DATA_ATTR int rtcMentions = 0;
+RTC_DATA_ATTR int rtcAssignments = 0;
+RTC_DATA_ATTR int rtcOtherReasons = 0;
+
+RTC_DATA_ATTR int rtcOpenPRs = 0;
+RTC_DATA_ATTR int rtcReadyToMerge = 0;
+RTC_DATA_ATTR int rtcAwaitingReview = 0;
+RTC_DATA_ATTR int rtcChangesRequested = 0;
+
+RTC_DATA_ATTR int rtcPublicRepos = 0;
+RTC_DATA_ATTR int rtcTotalStars = 0;
+RTC_DATA_ATTR int rtcProfileOpenPRs = 0;
+RTC_DATA_ATTR int rtcFollowers = 0;
+
+RTC_DATA_ATTR char rtcUsername[40] = "";
+
 
 const int UPDATE_INTERVAL_MS = 1 * 60 * 1000;
 const int GITHUB_MAX_PAGES = 25;
@@ -27,47 +55,10 @@ U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
 WebServer server(80);
 Preferences preferences;
 
-struct Config {
-  String wifi_ssid;
-  String wifi_password;
-  String admin_password;
-  int update_interval;
-  bool configured;
-  String wifi_ap_password;
-} config;
-
-struct NotificationProvider {
-  String name;
-  String displayName;
-  bool enabled;
-  String apiToken;
-  String apiUrl;
-  int notificationCount;
-  String lastError;
-  unsigned long lastUpdate;
-  int reviewRequests;
-  int mentions;
-  int assignments;
-  int otherReasons;
-  String username;
-};
-
-struct PRData {
-  int openPRs;
-  int readyToMerge;
-  int awaitingReview;
-  int changesRequested;
-  String lastError;
-  unsigned long lastUpdate;
-};
-
-enum ProviderType {
-  GITHUB,
-  MAX_PROVIDERS
-};
-
+Config config;
 NotificationProvider providers[MAX_PROVIDERS];
 PRData prData;
+ProfileData profileData = {0, 0, 0, 0};
 
 #define BUTTON_REFRESH 0
 #define BUTTON_WAKEUP 39
@@ -92,13 +83,6 @@ const int LABEL_X = 32;
 const int COUNT_X = SCREEN_WIDTH - 25;
 #endif
 
-enum ScreenType {
-  SCREEN_NOTIFICATIONS,
-  SCREEN_PROFILE,
-  SCREEN_PR_OVERVIEW,
-  MAX_SCREENS
-};
-
 int currentScreen = SCREEN_NOTIFICATIONS;
 bool isConfigMode = false;
 unsigned long lastUpdateTime = 0;
@@ -107,6 +91,7 @@ bool wifiConnected = false;
 unsigned long wakeupTime = 0;
 unsigned long bootTime = 0;
 bool allowDeepSleep = false;
+bool skipGracePeriod = false;
 int totalNotifications = 0;
 int activeProviders = 0;
 unsigned long lastScreenSwitchTime = 0;
@@ -240,7 +225,6 @@ public:
     
     u8g2->setFont(currentFont);
     String str = String(text);
-    int lastSpace = -1;
     int lineStart = 0;
     
     for (int i = 0; i <= str.length(); i++) {
@@ -292,12 +276,24 @@ public:
 void setup() {
   Serial.begin(115200);
   delay(100);
+  
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  bool isFastResume = (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER || wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) && rtcValid;
+  
+  if (isFastResume) {
+    fastResume();
+    return;
+  }
+  
   Serial.println("\n\n");
   Serial.println("=====================================");
   Serial.println("=== ESP32 Notification Hub v1.0 ===");
   Serial.println("=====================================");
   Serial.println();
-  Serial.println("[SYSTEM] Starting initialization...");
+  
+  checkWakeupReason();
+  
+  Serial.println("\n[SYSTEM] Starting initialization... (" + String(millis()) + "ms)");
   Serial.println("[SYSTEM] Chip Model: " + String(ESP.getChipModel()));
   Serial.println("[SYSTEM] CPU Frequency: " + String(ESP.getCpuFreqMHz()) + " MHz");
   Serial.println("[SYSTEM] Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
@@ -347,7 +343,7 @@ void setup() {
   #endif
   
   Serial.println("\n=====================================");
-  Serial.println("[SYSTEM] ✓ Setup complete!");
+  Serial.println("[SYSTEM] ✓ Setup complete! (" + String(millis()) + "ms)");
   Serial.println("=====================================");
   if (wifiConnected) {
     Serial.println("[SYSTEM] Access web interface at:");
@@ -358,12 +354,12 @@ void setup() {
   }
   Serial.println("=====================================\n");
   
-  bootTime = millis();
   wakeupTime = millis();
-  checkWakeupReason();
   allowDeepSleep = wifiConnected && !isConfigMode;
   
-  Serial.println("[POWER] Boot grace period: 10 minutes (deep sleep disabled)");
+  if (!skipGracePeriod) {
+    Serial.println("[POWER] Boot grace period: 10 minutes (deep sleep disabled)");
+  }
 }
 
 void goToDeepSleep() {
@@ -371,7 +367,7 @@ void goToDeepSleep() {
   
   unsigned long sleepTime = config.update_interval * 60;
   
-  Serial.println("\n[POWER] Preparing for deep sleep...");
+  Serial.println("\n[POWER] Preparing for deep sleep... (" + String(millis()) + "ms)");
   Serial.println("[POWER] Sleep duration: " + String(sleepTime / 60) + " minutes");
   Serial.println("[POWER] Wake on: Timer OR Button (GPIO0)");
   
@@ -386,6 +382,29 @@ void goToDeepSleep() {
   display.hibernate();
   #endif
   
+  rtcValid = true;
+  rtcCurrentScreen = currentScreen;
+  
+  rtcNotificationCount = providers[GITHUB].notificationCount;
+  rtcReviewRequests = providers[GITHUB].reviewRequests;
+  rtcMentions = providers[GITHUB].mentions;
+  rtcAssignments = providers[GITHUB].assignments;
+  rtcOtherReasons = providers[GITHUB].otherReasons;
+  
+  rtcOpenPRs = prData.openPRs;
+  rtcReadyToMerge = prData.readyToMerge;
+  rtcAwaitingReview = prData.awaitingReview;
+  rtcChangesRequested = prData.changesRequested;
+  
+  rtcPublicRepos = profileData.publicRepos;
+  rtcTotalStars = profileData.totalStars;
+  rtcProfileOpenPRs = profileData.openPRs;
+  rtcFollowers = profileData.followers;
+  
+  strncpy(rtcUsername, providers[GITHUB].username.c_str(), sizeof(rtcUsername) - 1);
+  
+  Serial.println("[RTC] Cached display data to RTC memory");
+  
   esp_sleep_enable_timer_wakeup(sleepTime * 1000000ULL);
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
   
@@ -393,6 +412,89 @@ void goToDeepSleep() {
   Serial.flush();
   
   esp_deep_sleep_start();
+}
+
+void fastResume() {
+  Serial.println("\n[FAST RESUME] Quick wakeup... (" + String(millis()) + "ms)");
+  
+  pinMode(LED_STATUS, OUTPUT);
+  pinMode(BUTTON_REFRESH, INPUT_PULLUP);
+  pinMode(BUTTON_WAKEUP, INPUT);
+  pinMode(BATTERY_ADC, INPUT);
+  digitalWrite(LED_STATUS, LOW);
+  
+  analogReadResolution(12);
+  analogSetAttenuation(ADC_11db);
+  
+  #ifdef ENABLE_DISPLAY
+  display.init(0, false, 2, false);
+  display.setRotation(1);
+  u8g2Fonts.begin(display);
+  #endif
+  
+  currentScreen = rtcCurrentScreen;
+  loadConfig();
+  initProviders();
+  
+  providers[GITHUB].notificationCount = rtcNotificationCount;
+  providers[GITHUB].reviewRequests = rtcReviewRequests;
+  providers[GITHUB].mentions = rtcMentions;
+  providers[GITHUB].assignments = rtcAssignments;
+  providers[GITHUB].otherReasons = rtcOtherReasons;
+  providers[GITHUB].username = String(rtcUsername);
+  
+  prData.openPRs = rtcOpenPRs;
+  prData.readyToMerge = rtcReadyToMerge;
+  prData.awaitingReview = rtcAwaitingReview;
+  prData.changesRequested = rtcChangesRequested;
+  
+  profileData.publicRepos = rtcPublicRepos;
+  profileData.totalStars = rtcTotalStars;
+  profileData.openPRs = rtcProfileOpenPRs;
+  profileData.followers = rtcFollowers;
+  
+  lastDisplayedTotal = rtcNotificationCount;
+  lastDisplayedReviews = rtcReviewRequests;
+  lastDisplayedMentions = rtcMentions;
+  lastDisplayedAssignments = rtcAssignments;
+  lastDisplayedOther = rtcOtherReasons;
+  
+  lastDisplayedOpenPRs = rtcOpenPRs;
+  lastDisplayedReadyToMerge = rtcReadyToMerge;
+  lastDisplayedAwaitingReview = rtcAwaitingReview;
+  lastDisplayedChangesRequested = rtcChangesRequested;
+  
+  lastDisplayedPublicRepos = rtcPublicRepos;
+  lastDisplayedTotalStars = rtcTotalStars;
+  lastDisplayedProfileOpenPRs = rtcProfileOpenPRs;
+  lastDisplayedFollowers = rtcFollowers;
+  
+  Serial.println("[RTC] Restored cached display data from RTC memory");
+  
+  Serial.println("[FAST RESUME] Reconnecting to WiFi...");
+  fastConnectWiFi();
+  
+  if (wifiConnected) {
+    setupWebServer();
+    
+    Serial.println("[FAST RESUME] ✓ Resume complete! (" + String(millis()) + "ms)");
+    Serial.println("[FAST RESUME] IP: " + WiFi.localIP().toString());
+    
+    wakeupTime = millis();
+    checkWakeupReason();
+    allowDeepSleep = true;
+    
+    updateAllProviders();
+    lastUpdateTime = millis();
+    
+    #ifdef ENABLE_DISPLAY
+    updateDisplay(false);
+    #endif
+  } else {
+    Serial.println("[FAST RESUME] WiFi failed, doing full setup");
+    rtcValid = false;
+    ESP.restart();
+  }
 }
 
 void checkWakeupReason() {
@@ -406,12 +508,16 @@ void checkWakeupReason() {
       digitalWrite(LED_STATUS, LOW);
       delay(100);
       digitalWrite(LED_STATUS, HIGH);
+      skipGracePeriod = true;
       break;
     case ESP_SLEEP_WAKEUP_TIMER:
       Serial.println("[WAKE] Woke up by timer (scheduled update)");
+      skipGracePeriod = true;
       break;
     default:
       Serial.println("[WAKE] Cold boot - not from deep sleep");
+      bootTime = millis();
+      skipGracePeriod = false;
       allowDeepSleep = false;
       break;
   }
@@ -494,11 +600,13 @@ void loop() {
       Serial.println("%");
       #endif
       
-      unsigned long nextUpdate = (interval - (millis() - lastUpdateTime)) / 1000;
-      Serial.println("[TIMER] Next update in " + String(nextUpdate / 60) + " minutes");
+      if (skipGracePeriod || millis() - bootTime >= BOOT_GRACE_PERIOD) {
+        unsigned long nextUpdate = (interval - (millis() - lastUpdateTime)) / 1000;
+        Serial.println("[TIMER] Next update in " + String(nextUpdate / 60) + " minutes");
+      }
     }
     
-    if (millis() - bootTime < BOOT_GRACE_PERIOD) {
+    if (millis() - bootTime < BOOT_GRACE_PERIOD && !skipGracePeriod) {
       unsigned long remainingGrace = (BOOT_GRACE_PERIOD - (millis() - bootTime)) / 60000;
       if (remainingGrace > 0) {
         static unsigned long lastGraceLog = 0;
@@ -545,6 +653,15 @@ void connectWiFi(String ssid, String password) {
     Serial.print("[WIFI] IP: ");
     Serial.println(WiFi.localIP());
     digitalWrite(LED_STATUS, HIGH);
+    
+    strncpy(rtcWifiSSID, ssid.c_str(), sizeof(rtcWifiSSID) - 1);
+    strncpy(rtcWifiPass, password.c_str(), sizeof(rtcWifiPass) - 1);
+    rtcWifiChannel = WiFi.channel();
+    memcpy(rtcWifiBSSID, WiFi.BSSID(), 6);
+    rtcValid = true;
+    
+    Serial.println("[WIFI] Saved to RTC memory for fast resume");
+    
     #ifdef ENABLE_DISPLAY
     updateDisplay(true);
     #endif
@@ -555,6 +672,32 @@ void connectWiFi(String ssid, String password) {
     showError("WiFi failed");
     #endif
     startConfigMode();
+  }
+}
+
+void fastConnectWiFi() {
+  WiFi.mode(WIFI_STA);
+  
+  Serial.print("[WIFI] Fast reconnect to: ");
+  Serial.println(rtcWifiSSID);
+  Serial.print("[WIFI] Channel: ");
+  Serial.println(rtcWifiChannel);
+  
+  WiFi.begin(rtcWifiSSID, rtcWifiPass, rtcWifiChannel, rtcWifiBSSID, true);
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(100);
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    digitalWrite(LED_STATUS, HIGH);
+    Serial.println("[WIFI] ✓ Fast reconnect successful!");
+  } else {
+    wifiConnected = false;
+    Serial.println("[WIFI] ✗ Fast reconnect failed");
   }
 }
 

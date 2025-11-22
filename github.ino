@@ -44,12 +44,7 @@ void updateAllProviders() {
   #endif
 }
 
-struct HttpResponse {
-  int code;
-  bool success;
-};
-
-HttpResponse makeHttpsRequest(WiFiClientSecure* client, const String& url, const String& authToken, DynamicJsonDocument* doc, const String& userAgent = "ESP32-NotificationHub") {
+HttpResponse makeHttpsRequest(WiFiClientSecure* client, const String& url, const String& authToken, JsonDocument* doc, const String& userAgent = "ESP32-NotificationHub") {
   HttpResponse response = {0, false};
   
   HTTPClient* https = new HTTPClient();
@@ -125,9 +120,9 @@ void updateGitHub(int idx) {
   client->setInsecure();
   
   if (providers[idx].username.length() == 0) {
-    DynamicJsonDocument userDoc(1024);
+    JsonDocument userDoc;
     HttpResponse userResp = makeHttpsRequest(client, "https://api.github.com/user", providers[idx].apiToken, &userDoc);
-    if (userResp.success && userDoc.containsKey("login")) {
+    if (userResp.success && userDoc["login"].is<const char*>()) {
       providers[idx].username = userDoc["login"].as<String>();
       Serial.print("[GITHUB] Username: ");
       Serial.println(providers[idx].username);
@@ -154,7 +149,7 @@ void updateGitHub(int idx) {
     Serial.print(", Max alloc: ");
     Serial.println(ESP.getMaxAllocHeap());
     
-    DynamicJsonDocument doc(JSON_BUFFER_SIZE);
+    JsonDocument doc;
     HttpResponse pageResp = makeHttpsRequest(client, String(urlBuffer), providers[idx].apiToken, &doc);
     
     if (!pageResp.success) {
@@ -267,9 +262,9 @@ void updateGitHubPRs(int idx) {
   client->setInsecure();
   
   if (providers[idx].username.length() == 0) {
-    DynamicJsonDocument userDoc(1024);
+    JsonDocument userDoc;
     HttpResponse userResp = makeHttpsRequest(client, "https://api.github.com/user", providers[idx].apiToken, &userDoc);
-    if (userResp.success && userDoc.containsKey("login")) {
+    if (userResp.success && userDoc["login"].is<const char*>()) {
       providers[idx].username = userDoc["login"].as<String>();
       Serial.print("[GITHUB PRs] Username: ");
       Serial.println(providers[idx].username);
@@ -307,7 +302,7 @@ void updateGitHubPRs(int idx) {
   
   if (httpCode == 200) {
     String payload = https->getString();
-    DynamicJsonDocument doc(8192);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, payload);
     
     if (!error) {
@@ -408,7 +403,7 @@ void updateGitHubProfile(int idx) {
   
   if (httpCode == 200) {
     String payload = https->getString();
-    DynamicJsonDocument doc(8192);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, payload);
     
     if (!error) {
