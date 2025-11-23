@@ -109,7 +109,7 @@ The device has three screens that you can cycle through by pressing the button o
 
 #### 3. PR Overview Screen
 
-![PR Overview Screen](screenshots/activity.jpg)
+![PR Overview Screen](screenshots/pr.jpg)
 
 - GitHub logo
 - PR Overview title
