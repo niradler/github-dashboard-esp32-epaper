@@ -1,0 +1,18 @@
+# Editor directories and files
+.vscode/*
+!.vscode/settings.json
+!.vscode/arduino.json
+!.vscode/extensions.json
+
+# Arduino build files
+build/
+.arduino/
+compile_commands.json
+
+# Clangd cache
+.clangd/
+.cache/
+
+# OS files
+.DS_Store
+Thumbs.db
